@@ -32,8 +32,8 @@ local godEnabled = false
 local noclipEnabled = false
 local fpsEnabled = false
 
-local normalSpeed = 16
-local boostedSpeed = 100
+local normalSpeed = 8
+local boostedSpeed = 24
 local espObjects = {}
 
 ------------------------------------------------------
