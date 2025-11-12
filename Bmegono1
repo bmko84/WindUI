@@ -2,7 +2,7 @@
 -- by สุดหล่อเมืองธน
 
 -- โหลด Fluent UI
-local Fluent = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2Swiftz/UI-Library/main/Libraries/FluentUI-Example.lua"))()
+local Fluent = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2Swiftz/UI-Library/refs/heads/main/Libraries/Dummy%20-%20Example.lua"))()
 
 -- สร้างหน้าต่างหลัก
 local Window = Fluent:CreateWindow({
