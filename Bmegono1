@@ -354,5 +354,4 @@ if Window.Notify then
     pcall(function()
         Window:Notify({ Title = "BmEGOno1 Hub", Content = "✅ โหลดสำเร็จ! เมนูพร้อมใช้งาน", Duration = 5 })
     end)
-end    Duration = 5
-})
+end
