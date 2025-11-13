@@ -1,24 +1,28 @@
--- 🌀 BmEGOno1 Hub (Mobile Friendly Full Version)
--- by สุดหล่อเมืองธน
+-- =========================
+-- BmEGOno1 Hub (X2ZU Dummy UI) - รวมทั้งหมด
+-- =========================
 
--- โหลด Fluent UI
-local Fluent = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2Swiftz/UI-Library/refs/heads/main/Libraries/Dummy%20-%20Example.lua"))()
+-- โหลด UI Library
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"))()
 
 -- สร้างหน้าต่างหลัก
-local Window = Fluent:CreateWindow({
+local Window = Library:Window({
     Title = "BmEGOno1 Hub",
-    SubTitle = "by สุดหล่อเมืองธน",
-    TabWidth = 120,
-    Size = UDim2.fromOffset(500, 350),
-    Acrylic = true,
-    Theme = "Dark"
+    Desc = "UI by สุดหล่อเมืองธน",
+    Icon = 105059922903197,
+    Theme = "Dark",
+    Config = {
+        Keybind = Enum.KeyCode.LeftControl,
+        Size = UDim2.new(0, 500, 0, 400)
+    },
+    CloseUIButton = { Enabled = true, Text = "BmEGOno1 Hub" }
 })
 
--- แท็บต่าง ๆ
-local MainTab = Window:AddTab({ Title = "Main" })
-local VisualTab = Window:AddTab({ Title = "Visual" })
-local MiscTab = Window:AddTab({ Title = "Misc" })
-local CreditsTab = Window:AddTab({ Title = "Credits" })
+-- แท็บ
+local MainTab = Window:Tab({ Title = "Main", Icon = "star" })
+local VisualTab = Window:Tab({ Title = "Visual", Icon = "eye" })
+local CheatTab = Window:Tab({ Title = "โกงโหดๆ", Icon = "wrench" })
+local CreditsTab = Window:Tab({ Title = "Credits", Icon = "crown" })
 
 -- ตัวแปรระบบ
 local Players = game:GetService("Players")
@@ -26,52 +30,49 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
-local speedEnabled = false
-local espEnabled = false
-local godEnabled = false
-local noclipEnabled = false
-local fpsEnabled = false
-
-local normalSpeed = 18
-local boostedSpeed = 23
+local speedEnabled, espEnabled, godEnabled, noclipEnabled, fpsEnabled = false, false, false, false, false
+local normalSpeed, boostedSpeed = 16, 100
 local espObjects = {}
 
-------------------------------------------------------
--- SPEED BOOST
-------------------------------------------------------
-MainTab:AddToggle("Speed", {
+-- Aimbot target default
+local aimPart = "Head" -- "Head" หรือ "HumanoidRootPart" (ใช้กับสคริปต์ภายนอก)
+
+-- =========================
+-- MAIN TAB
+-- =========================
+MainTab:Label({ Title = "ยินดีต้อนรับสู่ BmEGOno1 Hub!", Desc = "กด LeftControl เพื่อเปิด/ปิด UI" })
+MainTab:Toggle({
     Title = "Speed Boost",
     Default = false,
-    Callback = function(state)
-        speedEnabled = state
-    end
+    Callback = function(state) speedEnabled = state end
 })
 
 RunService.RenderStepped:Connect(function()
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        hum.WalkSpeed = speedEnabled and boostedSpeed or normalSpeed
+        LocalPlayer.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = speedEnabled and boostedSpeed or normalSpeed
     end
 end)
 
-------------------------------------------------------
--- ESP + NameTag (แยกสีฆาตกร)
-------------------------------------------------------
+-- =========================
+-- VISUAL TAB (ESP + FPS)
+-- =========================
 local function createESP(player)
-    if player == LocalPlayer then return end
-    if not player.Character then return end
-
+    if player == LocalPlayer or not player.Character then return end
     local char = player.Character
     local head = char:FindFirstChild("Head")
     if not head then return end
 
     -- ลบของเก่าก่อน
     if espObjects[player] then
-        for _, o in ipairs(espObjects[player]) do o:Destroy() end
+        for _, o in ipairs(espObjects[player]) do
+            if o and o.Destroy then
+                pcall(function() o:Destroy() end)
+            end
+        end
     end
     espObjects[player] = {}
 
-    -- Highlight รอบตัว
+    -- Highlight รอบตัว (แดง = ทีม Killer, เขียว = ปกติ)
     local highlight = Instance.new("Highlight")
     highlight.Adornee = char
     highlight.FillTransparency = 0.7
@@ -103,10 +104,7 @@ end
 
 local function setupPlayer(player)
     player.CharacterAdded:Connect(function()
-        if espEnabled then
-            task.wait(1)
-            createESP(player)
-        end
+        if espEnabled then task.wait(1) createESP(player) end
     end)
 end
 
@@ -117,20 +115,25 @@ end
 Players.PlayerAdded:Connect(setupPlayer)
 Players.PlayerRemoving:Connect(function(p)
     if espObjects[p] then
-        for _, o in ipairs(espObjects[p]) do o:Destroy() end
+        for _, o in ipairs(espObjects[p]) do
+            if o and o.Destroy then
+                pcall(function() o:Destroy() end)
+            end
+        end
         espObjects[p] = nil
     end
 end)
 
--- ESP Toggle
-VisualTab:AddToggle("ESP", {
+VisualTab:Toggle({
     Title = "Player ESP",
     Default = false,
     Callback = function(state)
         espEnabled = state
         if not state then
             for _, objs in pairs(espObjects) do
-                for _, o in ipairs(objs) do o:Destroy() end
+                for _, o in ipairs(objs) do
+                    if o and o.Destroy then pcall(function() o:Destroy() end) end
+                end
             end
             espObjects = {}
             return
@@ -141,9 +144,7 @@ VisualTab:AddToggle("ESP", {
     end
 })
 
-------------------------------------------------------
--- FPS DISPLAY (อยู่กับ Visual Tab)
-------------------------------------------------------
+-- FPS UI
 local playerGui = LocalPlayer:WaitForChild("PlayerGui")
 local fpsGui = playerGui:FindFirstChild("BmEGOno1_FPS") or Instance.new("ScreenGui", playerGui)
 fpsGui.Name = "BmEGOno1_FPS"
@@ -160,7 +161,7 @@ fpsLabel.Text = "FPS: 0"
 fpsLabel.Visible = false
 fpsLabel.Parent = fpsGui
 
-VisualTab:AddToggle("FPS", {
+VisualTab:Toggle({
     Title = "แสดง FPS",
     Default = false,
     Callback = function(state)
@@ -171,7 +172,6 @@ VisualTab:AddToggle("FPS", {
 
 local lastTime = tick()
 local frameCount = 0
-
 RunService.RenderStepped:Connect(function()
     if fpsEnabled then
         frameCount += 1
@@ -184,27 +184,24 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-------------------------------------------------------
+-- =========================
+-- CHEAT TAB ("โกงโหดๆ")
+-- =========================
+
 -- GOD MODE
-------------------------------------------------------
-MiscTab:AddToggle("GodMode", {
+CheatTab:Toggle({
     Title = "God Mode",
     Default = false,
     Callback = function(state)
         godEnabled = state
-        if godEnabled then
-            local char = LocalPlayer.Character
-            if char and char:FindFirstChildOfClass("Humanoid") then
-                char:FindFirstChildOfClass("Humanoid").Name = "GodHumanoid"
-            end
+        if godEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+            LocalPlayer.Character:FindFirstChildOfClass("Humanoid").Name = "GodHumanoid"
         end
     end
 })
 
-------------------------------------------------------
 -- FLY
-------------------------------------------------------
-MiscTab:AddButton({
+CheatTab:Button({
     Title = "Fly",
     Description = "Enable Fly Script",
     Callback = function()
@@ -212,10 +209,8 @@ MiscTab:AddButton({
     end
 })
 
-------------------------------------------------------
 -- HITBOX
-------------------------------------------------------
-MiscTab:AddButton({
+CheatTab:Button({
     Title = "Hitbox",
     Description = "Enable Hitbox Script",
     Callback = function()
@@ -223,10 +218,8 @@ MiscTab:AddButton({
     end
 })
 
-------------------------------------------------------
--- NOCLIP (เดินทะลุ)
-------------------------------------------------------
-MiscTab:AddToggle("Noclip", {
+-- NOCLIP
+CheatTab:Toggle({
     Title = "เดินทะลุ (NoClip)",
     Default = false,
     Callback = function(state)
@@ -244,46 +237,122 @@ RunService.Stepped:Connect(function()
     end
 end)
 
-------------------------------------------------------
--- ปุ่มลอยเปิด/ปิดเมนูมือถือ (มุมซ้ายบน)
-------------------------------------------------------
-local toggleGui = Instance.new("ScreenGui", playerGui)
-toggleGui.Name = "BmEGOno1_Toggle"
+-- Small Toggle Shift Lock (รวมเข้าแท็บ CheatTab)
+repeat task.wait() until game:IsLoaded() and LocalPlayer
+local camera = workspace.CurrentCamera
 
-local button = Instance.new("TextButton")
-button.Parent = toggleGui
-button.Size = UDim2.new(0, 100, 0, 40)
-button.Position = UDim2.new(0, 10, 0, 10)
-button.Text = "📁 Menu"
-button.TextScaled = true
-button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-button.TextColor3 = Color3.new(1, 1, 1)
-button.Active = true
-button.Draggable = true
-local corner = Instance.new("UICorner", button)
-corner.CornerRadius = UDim.new(0, 8)
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SmallShiftLockGUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-local menuVisible = true
-button.MouseButton1Click:Connect(function()
-    menuVisible = not menuVisible
-    Window.MainFrame.Visible = menuVisible
-    Fluent:Notify({
-        Title = "BmEGOno1 Hub",
-        Content = menuVisible and "🟢 เมนูเปิดแล้ว" or "🔴 เมนูถูกปิด",
-        Duration = 2
-    })
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Size = UDim2.new(0, 30, 0, 30)
+ToggleButton.Position = UDim2.new(0, 20, 0, 20)
+ToggleButton.Text = ""
+ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+ToggleButton.BorderSizePixel = 0
+ToggleButton.AutoButtonColor = true
+ToggleButton.Parent = ScreenGui
+
+local CenterFrame = Instance.new("Frame")
+CenterFrame.Size = UDim2.new(0, 8, 0, 8)
+CenterFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+CenterFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+CenterFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+CenterFrame.BorderSizePixel = 0
+CenterFrame.Visible = false
+CenterFrame.Parent = ScreenGui
+
+local lines = {}
+local offsets = {UDim2.new(0.5,0,0.5,-8),UDim2.new(0.5,0,0.5,8),UDim2.new(0.5,-8,0.5,0),UDim2.new(0.5,8,0.5,0)}
+local sizes = {UDim2.new(0,2,0,4),UDim2.new(0,2,0,4),UDim2.new(0,4,0,2),UDim2.new(0,4,0,2)}
+for i=1,4 do
+    local line = Instance.new("Frame")
+    line.Size = sizes[i]
+    line.Position = offsets[i]
+    line.AnchorPoint = Vector2.new(0.5,0.5)
+    line.BackgroundColor3 = Color3.fromRGB(255,255,255)
+    line.BorderSizePixel = 0
+    line.Visible = false
+    line.Parent = ScreenGui
+    table.insert(lines,line)
+end
+
+local isEnabled = false
+local function toggleShiftLock()
+    isEnabled = not isEnabled
+    CenterFrame.Visible = isEnabled
+    for _, line in pairs(lines) do line.Visible = isEnabled end
+end
+ToggleButton.MouseButton1Click:Connect(toggleShiftLock)
+
+RunService.RenderStepped:Connect(function()
+    if isEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local hrp = LocalPlayer.Character.HumanoidRootPart
+        local screenCenter = Vector2.new(camera.ViewportSize.X/2,camera.ViewportSize.Y/2)
+        local ray = camera:ViewportPointToRay(screenCenter.X,screenCenter.Y)
+        local lookAt = ray.Origin + ray.Direction*100
+        hrp.CFrame = CFrame.new(hrp.Position,Vector3.new(lookAt.X,hrp.Position.Y,lookAt.Z))
+    end
 end)
 
-------------------------------------------------------
--- CREDITS
-------------------------------------------------------
-CreditsTab:AddParagraph({
-    Title = "👑 BmEGOno1 Hub",
-    Content = "สร้างโดย: สุดหล่อเมืองธน\nใช้ Fluent UI (Violence District)\n📱 มือถือกดปุ่ม '📁 Menu' เพื่อเปิด/ปิดเมนู"
+-- =========================
+-- Aimbot: เลือกล็อกหัว/ตัว + ปุ่มรัน (วางใน CheatTab)
+-- =========================
+
+CheatTab:Label({
+    Title = "Aimbot Target",
+    Desc = "เลือกว่าจะล็อกหัวหรือส่วนตัว (ก่อนกดล็อก)"
 })
 
-Fluent:Notify({
-    Title = "BmEGOno1 Hub",
-    Content = "✅ โหลดสำเร็จ! กดปุ่ม '📁 Menu' เพื่อเปิด/ปิดเมนู",
-    Duration = 5
+CheatTab:Button({
+    Title = "เลือก: หัว",
+    Description = "ตั้งเป้าเป็น Head",
+    Callback = function()
+        aimPart = "Head"
+        print("[BmEGOno1] ตั้ง AimbotAimPart = Head")
+    end
+})
+
+CheatTab:Button({
+    Title = "เลือก: ตัว",
+    Description = "ตั้งเป้าเป็น HumanoidRootPart",
+    Callback = function()
+        aimPart = "HumanoidRootPart"
+        print("[BmEGOno1] ตั้ง AimbotAimPart = HumanoidRootPart")
+    end
+})
+
+CheatTab:Button({
+    Title = "ล็อกหัว-ตัว",
+    Description = "เรียก Aimbot Mobile (ใช้ค่าเลือกด้านบน)",
+    Callback = function()
+        -- กำหนด global ให้สคริปต์ภายนอกอ่านได้ (ถ้าสคริปต์นั้นรองรับ)
+        _G.AimbotAimPart = aimPart
+        local ok, err = pcall(function()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/DanielHubll/DanielHubll/refs/heads/main/Aimbot%20Mobile"))()
+        end)
+        if not ok then
+            warn("[BmEGOno1] โหลด Aimbot ล้มเหลว:", err)
+        else
+            print("[BmEGOno1] เรียก Aimbot เรียบร้อย (AimPart = "..tostring(aimPart)..")")
+        end
+    end
+})
+
+-- =========================
+-- CREDITS
+-- =========================
+CreditsTab:Paragraph({
+    Title = "👑 BmEGOno1 Hub",
+    Content = "สร้างโดย: สุดหล่อเมืองธน\nใช้ X2ZU Dummy UI"
+})
+
+-- แจ้งเตือนโหลดสำเร็จ (ถ้า Library มีฟังก์ชัน)
+if Window.Notify then
+    pcall(function()
+        Window:Notify({ Title = "BmEGOno1 Hub", Content = "✅ โหลดสำเร็จ! เมนูพร้อมใช้งาน", Duration = 5 })
+    end)
+end    Duration = 5
 })
