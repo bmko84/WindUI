@@ -1,237 +1,468 @@
+-- =========================
+-- BmEGOno1 Hub — FULL MERGED (Part 1)
+-- UI: x2zu / Fluent
+-- รวม Aimbot + Simple ESP + Item ESP + High Jump + Infinite Stamina
+-- =========================
+
+-- LOAD UI
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/x2zu/OPEN-SOURCE-UI-ROBLOX/refs/heads/main/X2ZU%20UI%20ROBLOX%20OPEN%20SOURCE/DummyUi-leak-by-x2zu/fetching-main/Tools/Framework.luau"))()
+
+local Window = Library:Window({
+    Title = "BmEGOno1 Hub",
+    Desc = "UI by สุดหล่อเมืองธน",
+    Icon = 105059922903197,
+    Theme = "Dark",
+    Config = { Keybind = Enum.KeyCode.LeftControl, Size = UDim2.new(0,500,0,400) },
+    CloseUIButton = { Enabled = true, Text = "BmEGOno1 Hub" }
+})
+
+local MainTab = Window:Tab({ Title = "Main", Icon = "star" })
+local VisualTab = Window:Tab({ Title = "Visual", Icon = "eye" })
+local CheatTab = Window:Tab({ Title = "โกงโหดๆ", Icon = "wrench" })
+local AimTab = Window:Tab({ Title = "Aimbot", Icon = "target" })
+local CreditsTab = Window:Tab({ Title = "Credits", Icon = "crown" })
+
+MainTab:Label({ Title = "ยินดีต้อนรับ!", Desc = "กด LeftControl เพื่อเปิด/ปิด UI" })
+
+-- SERVICES
 local Players = game:GetService("Players")
-
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
 local RunService = game:GetService("RunService")
-
+local ContentProvider = game:GetService("ContentProvider")
+local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
-
 local Camera = workspace.CurrentCamera
--- Orion UI
-local OrionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Orion/main/source"))()
 
-local Window = OrionLib:MakeWindow({
-	Name = "Silent Aim Menu",
-	HidePremium = false,
-	SaveConfig = true,
-	ConfigFolder = "SilentAimUI"
-})
-
-local Tab = Window:MakeTab({
-	Name = "Control",
-	Icon = "rbxassetid://4483345998",
-	PremiumOnly = false
-})
-
-Tab:AddToggle({
-	Name = "Silent Aim",
-	Default = SilentAimEnabled,
-	Callback = function(Value)
-		SilentAimEnabled = Value
-	end    
-})
-
-Tab:AddSlider({
-	Name = "FOV Size",
-	Min = 50,
-	Max = 300,
-	Default = FOV,
-	Increment = 1,
-	ValueName = "px",
-	Callback = function(Value)
-		FOV = Value
-	end    
-})
-
-OrionLib:Init()
-local SilentAimEnabled = true
-
+-- CONFIG / STATE
+local SilentAimEnabled = false
 local FOV = 150
+local ShowFOV = true
+local PredictionFactor = 0.165
+local TracerEnabled = false
+local CurrentTarget, head, aimPos
 
-local CurrentTarget
+local JumpEnabled = false
+local JumpPower = 120
 
-local head, aimPos
+getgenv().Infinitestamina = false
 
-local GunNames = {
+local SimpleESP_Enabled = false
+local playerESPObjects = {}
 
-    "P226","MP5","M24","Draco","Glock","Sawnoff","Uzi","G3","C9",
-
-    "Hunting Rifle","Anaconda","AK47","Remington","Double Barrel"
-
+local ItemESP_Enabled = false
+local BillboardCache = {}
+local WeaponDB = {}
+local PreloadedImages = {}
+local RARITY_COLORS = {
+    ["Common"]=Color3.fromRGB(255,255,255),
+    ["Uncommon"]=Color3.fromRGB(99,255,52),
+    ["Rare"]=Color3.fromRGB(51,170,255),
+    ["Epic"]=Color3.fromRGB(237,44,255),
+    ["Legendary"]=Color3.fromRGB(255,150,0),
+    ["Omega"]=Color3.fromRGB(255,20,51),
 }
 
+-- Gun lookup for aimbot
+local GunNames = {
+    "P226","MP5","M24","Draco","Glock","Sawnoff","Uzi","G3","C9",
+    "Hunting Rifle","Anaconda","AK47","Remington","Double Barrel"
+}
 local GunLookup = {}
-
 for _, name in pairs(GunNames) do GunLookup[name] = true end
 
-local fovCircle = Drawing.new("Circle")
+-- Drawing objects
+local fovCircle, tracerLine
+pcall(function()
+    fovCircle = Drawing.new("Circle")
+    fovCircle.Color = Color3.new(1,1,1)
+    fovCircle.Thickness = 2
+    fovCircle.NumSides = 100
+    fovCircle.Radius = FOV
+    fovCircle.Filled = false
+    fovCircle.Visible = ShowFOV
 
-fovCircle.Color = Color3.new(1,1,1)
+    tracerLine = Drawing.new("Line")
+    tracerLine.Color = Color3.new(1,0,0)
+    tracerLine.Thickness = 2
+    tracerLine.Visible = false
+end)-- =========================
+-- Part 2: Infinite Stamina + Simple ESP + Item ESP
+-- =========================
 
-fovCircle.Thickness = 2
+-- Infinite Stamina Hook
+local successSprint, SprintModule = pcall(function() return require(ReplicatedStorage.Modules.Game.Sprint) end)
+if successSprint and type(SprintModule) == "table" and SprintModule.consume_stamina then
+    local consume_stamina = SprintModule.consume_stamina
+    local ok, SprintBar = pcall(function() return debug.getupvalue(consume_stamina, 2).sprint_bar end)
+    if ok and SprintBar and type(SprintBar.update) == "function" then
+        local OldSprintUpdate
+        OldSprintUpdate = hookfunction(SprintBar.update, function(...)
+            if getgenv().Infinitestamina then
+                return OldSprintUpdate(function() return 1 end)
+            else
+                return OldSprintUpdate(...)
+            end
+        end)
+    end
+end
 
-fovCircle.NumSides = 100
+-- Simple Player ESP
+local function createSimpleESPForPlayer(player)
+    if player == LocalPlayer then return end
+    if not player.Character then return end
+    if playerESPObjects[player] then
+        for _, o in ipairs(playerESPObjects[player]) do if o and o.Parent then o:Destroy() end end
+    end
+    playerESPObjects[player] = {}
 
-fovCircle.Radius = FOV
+    local char = player.Character
+    local head = char:FindFirstChild("Head")
+    if not head then return end
 
-fovCircle.Filled = false
+    local highlight = Instance.new("Highlight")
+    highlight.Adornee = char
+    highlight.FillTransparency = 0.7
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.FillColor = (player.Team and player.Team.Name == "Killer") and Color3.fromRGB(255,0,0) or Color3.fromRGB(0,255,0)
+    highlight.Parent = Workspace
+    table.insert(playerESPObjects[player], highlight)
 
-fovCircle.Visible = true
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "BmESP_Name"
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0,150,0,25)
+    billboard.StudsOffset = Vector3.new(0,2.5,0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = head
 
-fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1,0,1,0)
+    label.BackgroundTransparency = 1
+    label.Text = player.DisplayName or player.Name
+    label.TextColor3 = highlight.FillColor
+    label.TextStrokeTransparency = 0.2
+    label.Font = Enum.Font.SourceSansBold
+    label.TextSize = 14
+    label.Parent = billboard
+
+    table.insert(playerESPObjects[player], billboard)
+end
+
+local function removeSimpleESPForPlayer(player)
+    if playerESPObjects[player] then
+        for _, o in ipairs(playerESPObjects[player]) do if o and o.Parent then o:Destroy() end end
+        playerESPObjects[player] = nil
+    end
+end
+
+Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function() task.wait(0.5) if SimpleESP_Enabled then createSimpleESPForPlayer(p) end end)
+    if SimpleESP_Enabled then createSimpleESPForPlayer(p) end
+end)
+Players.PlayerRemoving:Connect(function(p) removeSimpleESPForPlayer(p) end)
+
+-- =========================
+-- Item ESP registration
+-- =========================
+local function generateUniqueKey(tool)
+    if not tool or not tool:IsA("Tool") then return nil end
+    local itemId = tool:GetAttribute("ItemId") or tool:GetAttribute("Id")
+    if itemId and itemId ~= "" then return "ITEMID_"..tostring(itemId) end
+    local partsData = {}
+    for _, part in ipairs(tool:GetDescendants()) do
+        if part:IsA("SpecialMesh") and part.MeshId and part.MeshId ~= "" and part.MeshId ~= "rbxassetid://" then
+            table.insert(partsData, "MESH_"..part.MeshId.."|TEX_"..(part.TextureId or "NOTEX"))
+        elseif part:IsA("MeshPart") and part.MeshId and part.MeshId ~= "" and part.MeshId ~= "rbxassetid://" then
+            table.insert(partsData, "MESH_"..part.MeshId.."|TEX_"..(part.TextureID or "NOTEX"))
+        elseif part:IsA("Decal") and part.Texture and part.Texture ~= "" and part.Texture ~= "rbxassetid://" then
+            table.insert(partsData, "DECAL_"..part.Texture)
+        elseif part:IsA("Part") then
+            table.insert(partsData, "PART_"..part.Name.."_"..part.Size.X.."x"..part.Size.Y.."x"..part.Size.Z)
+        end
+    end
+    if #partsData > 0 then
+        table.sort(partsData)
+        return "MESHKEY_" .. table.concat(partsData, ";")
+    end
+    local displayName = tool:GetAttribute("DisplayName") or tool.Name
+    local rarity = tool:GetAttribute("RarityName") or tool:GetAttribute("Rarity") or "Common"
+    local imageId = tool:GetAttribute("ImageId") or "NOIMAGE"
+    return "NAME_" .. displayName .. "_" .. tool.Name .. "_" .. rarity .. "_" .. imageId
+end
+
+local function registerItems(folder)
+    for _, tool in ipairs(folder:GetDescendants()) do
+        if tool:IsA("Tool") then
+            local key = generateUniqueKey(tool)
+            if not key then continue end
+            local displayName = tool:GetAttribute("DisplayName") or tool.Name
+            local imageId = tool:GetAttribute("ImageId") or "rbxassetid://7072725737"
+            local rarity = tool:GetAttribute("RarityName") or tool:GetAttribute("Rarity") or "Common"
+            WeaponDB[key] = {
+                Name = displayName,
+                Rarity = rarity,
+                ImageId = imageId,
+                ToolName = tool.Name,
+                Key = key
+            }
+            if imageId and imageId ~= "" and not PreloadedImages[imageId] then
+                PreloadedImages[imageId] = true
+                task.spawn(function() pcall(function() ContentProvider:PreloadAsync({imageId}) end) end)
+            end
+        end
+    end
+end
+
+-- initial registration
+pcall(function()
+    local itemsFolder = ReplicatedStorage:WaitForChild("Items", 5)
+    if itemsFolder then registerItems(itemsFolder) end
+    for _, obj in ipairs(ReplicatedStorage:GetChildren()) do
+        if obj:IsA("Folder") and (obj.Name:find("Weapon") or obj.Name:find("Item") or obj.Name:find("Tool")) then
+            registerItems(obj)
+        end
+    end
+    registerItems(game:GetService("StarterPack"))
+end)-- =========================
+-- Part 3: AIMBOT + Tracer + Prediction
+-- =========================
 
 local function GetClosestTarget()
-
     local closest
-
     local shortest = math.huge
-
     local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-
     for _, player in pairs(Players:GetPlayers()) do
-
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
-
             local screenPos, onScreen = Camera:WorldToViewportPoint(player.Character.Head.Position)
-
             if onScreen then
-
                 local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-
                 if dist < FOV and dist < shortest then
-
                     shortest = dist
-
                     closest = player
-
                 end
-
             end
-
         end
-
     end
-
     return closest
+end
 
+local function PredictPosition(headPart)
+    local root = headPart.Parent:FindFirstChild("HumanoidRootPart")
+    if not root then return headPart.Position end
+    local velocity = root.Velocity
+    local prediction = headPart.Position + (velocity * PredictionFactor)
+    local seat = root:FindFirstChildWhichIsA("WeldConstraint") or root:FindFirstChildWhichIsA("Weld")
+    if seat and seat.Part0 then
+        prediction = headPart.Position + (seat.Part0.Velocity * PredictionFactor * 1.2)
+    end
+    return prediction
 end
 
 local function IsHoldingAllowedGun(args)
-
     local ok, weapon = pcall(function() return args[3] end)
-
     if not ok then return false end
-
-    if typeof(weapon) == "Instance" and GunLookup[weapon.Name] then
-
+    if typeof(weapon) == "Instance" and weapon and GunLookup[weapon.Name] then
         return true
-
     end
-
-    for _, child in pairs(LocalPlayer.Character:GetChildren()) do
-
-        if (child:IsA("Tool") or child:IsA("Model")) and GunLookup[child.Name] then
-
-            return true
-
+    local char = LocalPlayer.Character
+    if char then
+        for _, child in pairs(char:GetChildren()) do
+            if (child:IsA("Tool") or child:IsA("Model")) and GunLookup[child.Name] then
+                return true
+            end
         end
-
     end
-
     return false
-
 end
 
-local send = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Send")
-
-local oldFire
-
-oldFire = hookfunction(send.FireServer, function(self, ...)
-
-    local args = {...}
-
-    if SilentAimEnabled and IsHoldingAllowedGun(args) then
-
-        CurrentTarget = GetClosestTarget()
-
-        if CurrentTarget and CurrentTarget.Character and CurrentTarget.Character:FindFirstChild("Head") then
-
-            head = CurrentTarget.Character.Head
-
-            aimPos = head.Position
-
-            args[4] = CFrame.new(1/0,1/0,1/0,0/0,0/0,0/0,0/0,0/0,0/0,0/0,0/0,0/0)
-
-            args[5] = {[1]={[1]={["Instance"]=head,["Position"]=aimPos}}}
-
-        end
-
+-- hook Send.FireServer safely
+local successRemotes, sendRemote = pcall(function() return ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Send") end)
+if successRemotes and sendRemote then
+    if hookfunction and typeof(sendRemote.FireServer) == "function" then
+        pcall(function()
+            local oldFire = hookfunction(sendRemote.FireServer, function(self, ...)
+                local args = {...}
+                if SilentAimEnabled and IsHoldingAllowedGun(args) then
+                    CurrentTarget = GetClosestTarget()
+                    if CurrentTarget and CurrentTarget.Character and CurrentTarget.Character:FindFirstChild("Head") then
+                        head = CurrentTarget.Character.Head
+                        aimPos = PredictPosition(head) or head.Position
+                        args[4] = CFrame.new(1/0,1/0,1/0,0/0,0/0,0/0,0/0,0/0,0/0,0/0,0/0,0/0)
+                        args[5] = {[1]={[1]={["Instance"]=head,["Position"]=aimPos}}}
+                    end
+                end
+                return oldFire(self, unpack(args))
+            end)
+        end)
     end
-
-    return oldFire(self, unpack(args))
-
-end)
-
-local tracerLine = Drawing.new("Line")
-
-tracerLine.Color = Color3.new(1,0,0)
-
-tracerLine.Thickness = 2
-
-tracerLine.Visible = false
+end-- =========================
+-- Part 4: RenderStepped loop + High Jump + Item ESP update + UI toggles
+-- =========================
 
 RunService.RenderStepped:Connect(function()
-
-    fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-
-    fovCircle.Radius = FOV
-
-    local target = GetClosestTarget()
-
-    if target and target.Character and target.Character:FindFirstChild("Head") then
-
-        local headPos = target.Character.Head.Position
-
-        local screenPos, onScreen = Camera:WorldToViewportPoint(headPos)
-
-        if onScreen then
-
-            local ourHeadPos = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") and LocalPlayer.Character.Head.Position
-
-            if ourHeadPos then
-
-                local screenStart, startOnScreen = Camera:WorldToViewportPoint(ourHeadPos)
-
-                if startOnScreen then
-
-                    tracerLine.From = Vector2.new(screenStart.X, screenStart.Y)
-
-                    tracerLine.To = Vector2.new(screenPos.X, screenPos.Y)
-
-                    tracerLine.Visible = true
-
-                else
-
-                    tracerLine.Visible = false
-
-                end
-
-            else
-
-                tracerLine.Visible = false
-
-            end
-
-        else
-
-            tracerLine.Visible = false
-
-        end
-
-    else
-
-        tracerLine.Visible = false
-
+    -- FOV circle update
+    if fovCircle then
+        fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+        fovCircle.Radius = FOV
+        fovCircle.Visible = ShowFOV
     end
 
+    -- Tracer (prediction line)
+    if tracerLine and TracerEnabled then
+        local target = GetClosestTarget()
+        if target and target.Character and target.Character:FindFirstChild("Head") then
+            local predictedPos = PredictPosition(target.Character.Head) or target.Character.Head.Position
+            local screenPos, onScreen = Camera:WorldToViewportPoint(predictedPos)
+            if onScreen and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") then
+                local ourHeadPos = LocalPlayer.Character.Head.Position
+                local screenStart = Camera:WorldToViewportPoint(ourHeadPos)
+                tracerLine.From = Vector2.new(screenStart.X, screenStart.Y)
+                tracerLine.To = Vector2.new(screenPos.X, screenPos.Y)
+                tracerLine.Visible = true
+            else
+                tracerLine.Visible = false
+            end
+        else
+            tracerLine.Visible = false
+        end
+    elseif tracerLine then
+        tracerLine.Visible = false
+    end
+
+    -- High jump runtime enforcement
+    if JumpEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.JumpPower = JumpPower
+        LocalPlayer.Character.Humanoid.UseJumpPower = true
+    end
+
+    -- Item ESP update loop
+    if ItemESP_Enabled then
+        for player, billboard in pairs(BillboardCache) do
+            if not billboard or not billboard.Parent then
+                BillboardCache[player] = nil
+            else
+                local container = billboard:FindFirstChildOfClass("Frame")
+                if container then
+                    container:ClearAllChildren()
+                    local tools = {}
+                    local bp = player:FindFirstChild("Backpack")
+                    if bp then
+                        for _, t in ipairs(bp:GetChildren()) do if t:IsA("Tool") then table.insert(tools, t) end end
+                    end
+                    local char = player.Character
+                    if char then
+                        for _, t in ipairs(char:GetChildren()) do if t:IsA("Tool") then table.insert(tools, t) end end
+                    end
+                    local idx = 0
+                    for _, tool in ipairs(tools) do
+                        local info = WeaponDB[generateUniqueKey(tool)]
+                        if info then
+                            idx = idx + 1
+                            local img = Instance.new("ImageLabel")
+                            img.Parent = container
+                            img.Size = UDim2.new(0,35,0,35)
+                            img.Position = UDim2.new(0,(idx-1)*40,0,0)
+                            img.BackgroundTransparency = 1
+                            img.Image = info.ImageId
+                            img.ScaleType = Enum.ScaleType.Fit
+                            img.LayoutOrder = idx
+                            local color = RARITY_COLORS[info.Rarity] or Color3.fromRGB(255,255,255)
+                            img.ImageColor3 = color:Lerp(Color3.new(1,1,1), 0.35)
+                        end
+                    end
+                end
+            end
+        end
+    end
 end)
+
+-- =========================
+-- UI Controls
+-- =========================
+
+-- Infinite Stamina
+MainTab:Toggle({
+    Title = "Infinite Stamina",
+    Default = false,
+    Callback = function(state) getgenv().Infinitestamina = state end
+})
+
+-- High Jump
+CheatTab:Toggle({
+    Title = "High Jump",
+    Default = JumpEnabled,
+    Callback = function(state)
+        JumpEnabled = state
+        if not state and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.JumpPower = 50
+        end
+    end
+})
+CheatTab:Slider({
+    Title = "Jump Power",
+    Min = 50, Max = 300, Default = JumpPower, Float = 0,
+    Callback = function(val) JumpPower = val end
+})
+
+-- Simple Player ESP
+VisualTab:Toggle({
+    Title = "Simple ESP (Highlight + Name)",
+    Default = SimpleESP_Enabled,
+    Callback = function(state)
+        SimpleESP_Enabled = state
+        if not state then
+            for pl, _ in pairs(playerESPObjects) do removeSimpleESPForPlayer(pl) end
+        else
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character then createSimpleESPForPlayer(p) end
+            end
+        end
+    end
+})
+
+-- Item ESP
+VisualTab:Toggle({
+    Title = "Item ESP (ดูของ)",
+    Default = ItemESP_Enabled,
+    Callback = function(state)
+        ItemESP_Enabled = state
+        if not state then
+            for k,v in pairs(BillboardCache) do if v and v.Parent then v:Destroy() end end
+            BillboardCache = {}
+        else
+            for _, p in pairs(Players:GetPlayers()) do createBillboardForPlayer(p) end
+        end
+    end
+})
+
+-- Aimbot controls
+AimTab:Toggle({ Title="Silent Aim", Default = SilentAimEnabled, Callback = function(state) SilentAimEnabled = state end })
+AimTab:Slider({ Title="FOV", Min=50, Max=1000, Default=FOV, Float=0, Callback=function(val) FOV=val if fovCircle then fovCircle.Radius=val end end })
+AimTab:Toggle({ Title="Show FOV Circle", Default=ShowFOV, Callback=function(state) ShowFOV=state end })-- =========================
+-- Part 5: Aimbot Prediction + Tracer + Credits
+-- =========================
+
+-- Prediction Factor slider
+AimTab:Slider({
+    Title = "Prediction",
+    Min = 0, Max = 1, Default = PredictionFactor, Float = 0.001,
+    Callback = function(val) PredictionFactor = val end
+})
+
+-- Tracer toggle
+AimTab:Toggle({
+    Title = "Tracer Line",
+    Default = TracerEnabled,
+    Callback = function(state) TracerEnabled = state end
+})
+
+-- Credits
+CreditsTab:Label({
+    Title = "Credits",
+    Desc = "BmEGOno1 Hub by สุดหล่อเมืองธน\nUI: x2zu / Fluent\nESP & Aimbot integration: Full Merge"
+})
+
+-- =========================
+-- End of BmEGOno1 Hub — FULL MERGED
+-- =========================
