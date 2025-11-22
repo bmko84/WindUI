@@ -22,8 +22,8 @@ local Window = Library:Window({
 -- แท็บต่างๆ
 -- =========================
 local MainTab = Window:Tab({ Title = "PVP", Icon = "star" })
-local VisualTab = Window:Tab({ Title = "ESP", Icon = "eye" })
-local CheatTab = Window:Tab({ Title = "ฟังชั่นร่างกาย💪", Icon = "wrench" })
+
+local CheatTab = Window:Tab
 local CreditsTab = Window:Tab({ Title = "Credits", Icon = "crown" })
 
 -- =========================
