@@ -1,8 +1,8 @@
--- bmegono1 Hub (รวมทุกฟังก์ชัน + ESP ชื่อ + Item ESP toggle)
--- ใช้กับ WindUI
+-- bmegono1 Hub (   + Item ESP toggle)
+--  WindUI
 
 -- =========================
--- โหลด WindUI
+--  WindUI
 -- =========================
 local WindUI
 do
@@ -30,7 +30,7 @@ local function ValidateKey(key)
 end
 
 -- =========================
--- สร้าง Window + แท็บ
+--  Window + 
 -- =========================
 local Window = WindUI:CreateWindow({
     Title = "bmegono1 Hub",
@@ -352,7 +352,7 @@ do
         end
     end)
 
-    TabLoot:Toggle({Title="ดูดของ", Default=false, Callback=function(val) AutoMagnetEnabled=val end})
+    TabLoot:Toggle({Title="", Default=false, Callback=function(val) AutoMagnetEnabled=val end})
 end
 
 -- =========================
