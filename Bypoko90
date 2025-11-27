@@ -1,4 +1,4 @@
--- bmegono1 Hub (   + Item ESP toggle)
+-- Toonzx Hub (   + Item ESP toggle)
 --  WindUI
 
 -- =========================
@@ -33,15 +33,15 @@ end
 --  Window + 
 -- =========================
 local Window = WindUI:CreateWindow({
-    Title = "bmegono1 Hub",
-    Author = "สุดหล่อเมืองธน",
-    Folder = "bmegono1hub",
+    Title = "Toonzx Hub",
+    Author = "Toonzxราชาโปร",
+    Folder = "Toonzxhub",
     Icon = "https://cdn.discordapp.com/attachments/1278279899710488600/1442015968149639268/IMG_20251123_115605.jpg",
     IconSize = 55,
     NewElements = true,
     HideSearchBar = true,
     OpenButton = {
-        Title = "Open bmegono1 Hub",
+        Title = " Toonzx Hub",
         CornerRadius = UDim.new(1,0),
         StrokeThickness = 3,
         Enabled = true,
@@ -50,7 +50,7 @@ local Window = WindUI:CreateWindow({
     },
     KeySystem = {
         Title = "ยืนยันคีย์เข้าใช้งาน",
-        Note = "ใส่คีย์ของคุณเพื่อเข้าใช้ bmegono1 Hub",
+        Note = "ใส่คีย์ของคุณเพื่อเข้าใช้ Toonzx Hub",
         KeyValidator = ValidateKey,
         BannerImage = "https://cdn.discordapp.com/attachments/1278279899710488600/1442015968149639268/IMG_20251123_115605.jpg",
         BannerImageSize = UDim2.new(0,180,0,180),
