@@ -702,8 +702,8 @@ Players.PlayerRemoving:Connect(function(p) removePlayerDrawing(p) end)
 -- (can't reliably detect script/unload, but cleanupAll available if you call it)
 
 print("Merged script loaded. SilentAim:", state.SilentAimEnabled, "PlayerESP(Name/Box/HP):", state.ShowPlayerName, state.ShowPlayerBox, state.ShowPlayerHealth, "ItemESP:", state.ShowDroppedItems)
-CombatTab:Toggle({
-    Title = "Enable Wall Bang",
+PlayerTab:Toggle({
+    Title = "Enable ขึ้นมั้ย",
     Default = false,
     Callback = function(v) state.EnableWallBang = v end
 })
