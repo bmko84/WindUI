@@ -1,0 +1,822 @@
+FULL COMBINED SCRIPT
+-- WindUI + Silent Aim + Tracer + FOV + Player ESP (Drawing: Name/Box/Health) + Dropped Items ESP
+-- Place in a LocalScript (StarterPlayerScripts). Requires HttpGet for WindUI loader and Drawing api.
+
+-- ===== Services / Globals =====
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+-- ===== WindUI loader =====
+local ok, WindUI = pcall(function()
+    return loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+end)
+if not ok or not WindUI then
+    warn("WindUI failed to load. Make sure HttpGet is allowed or loader URL is reachable.")
+    WindUI = nil
+end
+
+-- ===== Window & Tabs =====
+local Window
+if WindUI then
+    Window = WindUI:CreateWindow({
+        Title = "bmegono1",
+        Icon = "zap",
+        Author = "bmegono1",
+        Folder = "MySuperHub",
+        Size = UDim2.fromOffset(580, 460),
+        MinSize = Vector2.new(560, 350),
+        MaxSize = Vector2.new(850, 560),
+        Transparent = true,
+        Theme = "Dark",
+        Resizable = true,
+        SideBarWidth = 200,
+        BackgroundImageTransparency = 0.42,
+        HideSearchBar = true,
+        ScrollBarEnabled = false,
+        User = {
+            Enabled = true,
+            Anonymous = false,
+            Name = LocalPlayer.Name,
+            Image = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId,
+            Callback = function()
+                print("Clicked user section!")
+            end,
+        },
+    })
+else
+    -- minimal fallback (no real WindUI)
+    warn("Using fallback UI - limited functionality.")
+    local ScreenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+    ScreenGui.Name = "MergedUI_Fallback"
+    local Frame = Instance.new("Frame", ScreenGui)
+    Frame.Size = UDim2.new(0, 420, 0, 240)
+    Frame.Position = UDim2.new(0.02, 0, 0.2, 0)
+    Frame.BackgroundTransparency = 0.15
+    Frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+    local Title = Instance.new("TextLabel", Frame)
+    Title.Size = UDim2.new(1,0,0,28)
+    Title.Text = "Merged UI (Fallback)"
+    Title.BackgroundTransparency = 1
+    Window = {}
+    function Window:Tab(opts)
+        local t = {}
+        function t:Toggle(o) end
+        function t:Slider(o) end
+        function t:Dropdown(o) end
+        function t:Button(o) end
+        return t
+    end
+end
+
+local CombatTab = Window:Tab({Title = "Combat", Icon = "sword"})
+local ESPTab = Window:Tab({Title = "ESP", Icon = "eye"})
+local body Tab Window:Tab({Title = "ร่างกาย" lcon = "eye"})
+-- ===== State / CONFIG =====
+local state = {
+    SilentAimEnabled = false,
+    EnableWallBang = false,
+    showFov = false,
+    FOVRadius = 150,
+    SelectedBodyPart = "Head",
+    IgnoredPlayers = {},
+    ShowDroppedItems = true,
+    ShowPlayerName = true,
+    ShowPlayerBox = true,
+    ShowPlayerHealth = true,
+}
+
+-- ===== Combat Tab UI (existing features) =====
+CombatTab:Toggle({
+    Title = "Enable Silent Aim",
+    Default = false,
+    Callback = function(v) state.SilentAimEnabled = v end
+})
+
+CombatTab:Toggle({
+    Title = "Enable Wall Bang",
+    Default = false,
+    Callback = function(v) state.EnableWallBang = v end
+})
+
+-- FOV circle (Drawing)
+local FOVCircle
+local okDrawing, _ = pcall(function() FOVCircle = Drawing.new("Circle") end)
+if okDrawing and FOVCircle then
+    FOVCircle.Radius = state.FOVRadius
+    FOVCircle.Thickness = 0.5
+    FOVCircle.Filled = false
+    FOVCircle.Color = Color3.fromRGB(255,0,0)
+    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    FOVCircle.Visible = false
+else
+    FOVCircle = nil
+    warn("Drawing API unavailable for FOV circle.")
+end
+
+CombatTab:Toggle({
+    Title = "Enable FOV Circle",
+    Default = false,
+    Callback = function(v)
+        state.showFov = v
+        if FOVCircle then FOVCircle.Visible = v end
+    end
+})
+
+CombatTab:Slider({
+    Title = "FOV Radius",
+    Step = 1,
+    Value = {Min = 50, Max = 500, Default = state.FOVRadius},
+    Callback = function(value)
+        state.FOVRadius = tonumber(value)
+        if FOVCircle then FOVCircle.Radius = state.FOVRadius end
+    end
+})
+
+-- Body part dropdown
+local BodyPartOptions = {"Head", "HumanoidRootPart"}
+CombatTab:Dropdown({
+    Flag = "TargetBodyPart",
+    Title = "Lock Body Part",
+    Values = BodyPartOptions,
+    Value = state.SelectedBodyPart,
+    Callback = function(option)
+        state.SelectedBodyPart = option
+    end
+})
+
+-- Ignore players multi dropdown
+local function GetPlayerDropdownOptions()
+    local options = {}
+    for _, player in pairs(Players:GetPlayers()) do
+        table.insert(options, player.Name)
+    end
+    return options
+end
+
+local ignoreDropdown = CombatTab:Dropdown({
+    Flag = "IgnorePlayers",
+    Title = "Ignore Players",
+    Values = GetPlayerDropdownOptions(),
+    Value = {},
+    Multi = true,
+    Callback = function(selectedOptions)
+        state.IgnoredPlayers = {}
+        for _, v in ipairs(selectedOptions) do
+            table.insert(state.IgnoredPlayers, v)
+        end
+    end
+})
+
+CombatTab:Button({
+    Title = "Reset Ignored Players",
+    Callback = function()
+        state.IgnoredPlayers = {}
+        if ignoreDropdown and ignoreDropdown.Reset then ignoreDropdown:Reset() end
+        if ignoreDropdown and ignoreDropdown.SetValues then ignoreDropdown:SetValues(GetPlayerDropdownOptions()) end
+    end
+})
+
+Players.PlayerAdded:Connect(function(player)
+    if ignoreDropdown and ignoreDropdown.SetValues then ignoreDropdown:SetValues(GetPlayerDropdownOptions()) end
+end)
+Players.PlayerRemoving:Connect(function(player)
+    for i=#state.IgnoredPlayers,1,-1 do
+        if state.IgnoredPlayers[i] == player.Name then
+            table.remove(state.IgnoredPlayers,i)
+        end
+    end
+    if ignoreDropdown and ignoreDropdown.SetValues then ignoreDropdown:SetValues(GetPlayerDropdownOptions()) end
+end)
+
+-- ===== Tracer (Drawing) =====
+local tracerLine
+if okDrawing then
+    tracerLine = Drawing.new("Line")
+    tracerLine.Color = Color3.fromRGB(255,0,0)
+    tracerLine.Thickness = 2
+    tracerLine.Visible = false
+end
+
+-- ===== Prediction constants =====
+local PREDICTION_BASE = 0.15
+local WALLBANG_FACTOR_ROOT = 1.0
+local WALLBANG_FACTOR_SEAT = 1.2
+local HEAD_VEL_FACTOR = 0.1
+local ROOT_VEL_FACTOR = 0.12
+
+local function PredictPosition(part, enableWallBang)
+    if not part or not part.Parent then return part and part.Position or Vector3.new() end
+    local root = part.Parent:FindFirstChild("HumanoidRootPart")
+    if not root then return part.Position end
+    local velocityFactor = (part.Name == "Head") and HEAD_VEL_FACTOR or ROOT_VEL_FACTOR
+    local baseVelocity = root.Velocity
+    if part:IsA("BasePart") then
+        baseVelocity = baseVelocity + (part.Velocity * velocityFactor)
+    end
+    local prediction = part.Position + (baseVelocity * PREDICTION_BASE)
+    if enableWallBang then
+        local seat = root:FindFirstChildWhichIsA("WeldConstraint") or root:FindFirstChildWhichIsA("Weld")
+        if seat and seat.Part0 and seat.Part0.Velocity then
+            local rootVel = root.Velocity * WALLBANG_FACTOR_ROOT
+            local seatVel = seat.Part0.Velocity * WALLBANG_FACTOR_SEAT
+            prediction = part.Position + ((rootVel + seatVel) * PREDICTION_BASE)
+        end
+    end
+    return prediction
+end
+
+-- ===== Target selection =====
+local function GetTargetPart(character)
+    if not character then return nil end
+    return character:FindFirstChild(state.SelectedBodyPart) or character:FindFirstChild("HumanoidRootPart")
+end
+
+local function GetClosestTarget()
+    local closest
+    local shortest = math.huge
+    local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and not table.find(state.IgnoredPlayers, player.Name) then
+            local part = GetTargetPart(player.Character)
+            if part then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                if onScreen then
+                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+                    if state.showFov then
+                        if dist < (FOVCircle and FOVCircle.Radius or state.FOVRadius) and dist < shortest then
+                            shortest = dist
+                            closest = player
+                        end
+                    else
+                        if dist < shortest then
+                            shortest = dist
+                            closest = player
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+-- ===== Weapon check & shooting detection =====
+local DebugGuns = {
+    ["P226"]=true, ["MP5"]=true, ["M24"]=true, ["Draco"]=true, ["Glock"]=true,
+    ["Sawnoff"]=true, ["Uzi"]=true, ["G3"]=true, ["C9"]=true, ["Hunting Rifle"]=true,
+    ["Anaconda"]=true, ["AK47"]=true, ["Remington"]=true, ["Double Barrel"]=true
+}
+
+local function IsHoldingAllowedGun(args)
+    local ok, weapon = pcall(function() return args[3] end)
+    if not ok then return false end
+    if typeof(weapon) == "Instance" and DebugGuns[weapon.Name] then return true end
+    for _, child in pairs(LocalPlayer.Character:GetChildren()) do
+        if (child:IsA("Tool") or child:IsA("Model")) and DebugGuns[child.Name] then return true end
+    end
+    return false
+end
+
+local function IsShooting(args)
+    for i, v in pairs(args) do
+        if typeof(v) == "string" and v:lower():find("shoot") then
+            return true
+        elseif typeof(v) == "table" then
+            for _, t in pairs(v) do
+                if typeof(t) == "table" and t.Instance and t.Position then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+-- ===== Hook remote for Silent Aim =====
+local sendRemote
+pcall(function()
+    sendRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Send")
+end)
+
+if sendRemote then
+    local oldFire
+    oldFire = hookfunction(sendRemote.FireServer, function(self, ...)
+        local args = {...}
+        if state.SilentAimEnabled and IsHoldingAllowedGun(args) then
+            if IsShooting(args) then
+                local CurrentTarget = GetClosestTarget()
+                if CurrentTarget and CurrentTarget.Character then
+                    local targetPart = GetTargetPart(CurrentTarget.Character)
+                    local myHead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head")
+                    if targetPart and myHead then
+                        local predicted = PredictPosition(targetPart, state.EnableWallBang)
+                        if state.EnableWallBang then
+                            if args[5] and args[5][1] and args[5][1][1] then
+                                args[5][1][1].Instance = targetPart
+                                args[5][1][1].Position = predicted
+                            end
+end
+                        -- debug bullet
+                        if myHead.Position and predicted then
+                            local dist = (predicted - myHead.Position).Magnitude
+                            local beam = Instance.new("Part")
+                            beam.Anchored = true
+                            beam.CanCollide = false
+                            beam.Material = Enum.Material.Neon
+                            beam.Size = Vector3.new(0.1,0.1,dist)
+                            beam.CFrame = CFrame.new(myHead.Position, predicted) * CFrame.new(0,0,-dist/2)
+                            local hue = (tick()*0.5)%1
+                            beam.Color = Color3.fromHSV(hue, 1, 1)
+                            beam.Parent = Workspace
+                            Debris:AddItem(beam, 0.5)
+                        end
+                    end
+                end
+            end
+        end
+        return oldFire(self, unpack(args))
+    end)
+else
+    warn("Send remote not found in ReplicatedStorage.Remotes.Send - Silent Aim hook disabled.")
+end
+
+-- ===== Player ESP (Drawing) =====
+local PlayerESP = {} -- map Player -> {BoxLines, NameText, HealthLine}
+
+local function createPlayerDrawing(player)
+    if PlayerESP[player] then return end
+    if player == LocalPlayer then return end
+    -- ensure Drawing available
+    local ok, _ = pcall(function() Drawing.new("Line") end)
+    if not ok then
+        warn("Drawing API not available - Player ESP disabled.")
+        return
+    end
+
+    local box = {
+        TL = Drawing.new("Line"),
+        TR = Drawing.new("Line"),
+        BL = Drawing.new("Line"),
+        BR = Drawing.new("Line"),
+    }
+    for _, line in pairs(box) do
+        line.Thickness = 2
+        line.Color = Color3.fromRGB(0,255,0)
+        line.Visible = false
+    end
+
+    local nameTag = Drawing.new("Text")
+    nameTag.Size = 16
+    nameTag.Center = true
+    nameTag.Outline = true
+    nameTag.Color = Color3.fromRGB(255,255,255)
+    nameTag.Visible = false
+    nameTag.Text = player.Name
+
+    local healthLine = Drawing.new("Line")
+    healthLine.Thickness = 3
+    healthLine.Color = Color3.fromRGB(0,255,0)
+    healthLine.Visible = false
+
+    PlayerESP[player] = {
+        Box = box,
+        Name = nameTag,
+        Health = healthLine,
+    }
+end
+
+local function removePlayerDrawing(player)
+    local data = PlayerESP[player]
+    if not data then return end
+    for _, line in pairs(data.Box) do
+        if line and line.Remove then pcall(function() line:Remove() end) end
+    end
+    if data.Name and data.Name.Remove then pcall(function() data.Name:Remove() end) end
+    if data.Health and data.Health.Remove then pcall(function() data.Health:Remove() end) end
+    PlayerESP[player] = nil
+end
+
+local function updatePlayerESPs()
+    for player, data in pairs(PlayerESP) do
+        local char = player.Character
+        local hrp = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not hrp or not hum or hum.Health <= 0 then
+            -- hide but keep instance (so we can recreate later) OR remove
+            if data then
+                for _, line in pairs(data.Box) do line.Visible = false end
+                if data.Name then data.Name.Visible = false end
+                if data.Health then data.Health.Visible = false end
+            end
+            continue
+        end
+
+        local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+        if not onScreen then
+            for _, line in pairs(data.Box) do line.Visible = false end
+            if data.Name then data.Name.Visible = false end
+            if data.Health then data.Health.Visible = false end
+            continue
+        end
+
+        -- compute box bounds (heuristic)
+        local topPt = Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, 3, 0))
+        local bottomPt = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0))
+        local boxHeight = math.abs(topPt.Y - bottomPt.Y)
+        local boxWidth = boxHeight / 2
+
+        local x = pos.X - boxWidth/2
+        local y = pos.Y - boxHeight/2
+
+        local TL = Vector2.new(x, y)
+        local TR = Vector2.new(x + boxWidth, y)
+        local BL = Vector2.new(x, y + boxHeight)
+        local BR = Vector2.new(x + boxWidth, y + boxHeight)
+
+        -- draw box if enabled
+        if state.ShowPlayerBox then
+            data.Box.TL.From = TL; data.Box.TL.To = TR
+            data.Box.TR.From = TR; data.Box.TR.To = BR
+            data.Box.BL.From = TL; data.Box.BL.To = BL
+            data.Box.BR.From = BL; data.Box.BR.To = BR
+            for _, line in pairs(data.Box) do line.Visible = true end
+        else
+            for _, line in pairs(data.Box) do line.Visible = false end
+        end
+
+        -- draw name if enabled
+        if state.ShowPlayerName then
+            data.Name.Text = player.Name
+            data.Name.Position = Vector2.new(pos.X, y - 15)
+            data.Name.Visible = true
+        else
+            data.Name.Visible = false
+        end
+
+        -- draw health bar if enabled
+        if state.ShowPlayerHealth then
+            local hpPercent = math.clamp(hum.Health / (hum.MaxHealth > 0 and hum.MaxHealth or 1), 0, 1)
+            -- health bar draws from top to bottom according to missing health
+            local barStart = Vector2.new(x - 6, y)
+            local barEnd = Vector2.new(x - 6, y + boxHeight * (1 - hpPercent))
+            data.Health.From = barStart
+            data.Health.To = barEnd
+            data.Health.Visible = true
+            -- color health from green to red
+            local r = (1 - hpPercent) * 255
+            local g = hpPercent * 255
+            data.Health.Color = Color3.fromRGB(math.floor(r), math.floor(g), 0)
+        else
+            data.Health.Visible = false
+        end
+    end
+end
+
+-- auto create for existing players
+for _, p in pairs(Players:GetPlayers()) do createPlayerDrawing(p) end
+Players.PlayerAdded:Connect(function(p) createPlayerDrawing(p) end)
+Players.PlayerRemoving:Connect(function(p) removePlayerDrawing(p) end)
+
+-- ===== Player ESP UI toggles (ESPTab) =====
+ESPTab:Toggle({
+    Title = "Player Name ESP",
+    Default = true,
+    Callback = function(v) state.ShowPlayerName = v end
+})
+ESPTab:Toggle({
+    Title = "Player Box ESP",
+    Default = true,
+    Callback = function(v) state.ShowPlayerBox = v end
+})
+ESPTab:Toggle({
+    Title = "Player Health Bar",
+    Default = true,
+    Callback = function(v) state.ShowPlayerHealth = v end
+})
+
+-- ===== Dropped Items ESP (Highlights + Billboard) =====
+local DroppedFolder = Workspace:FindFirstChild("DroppedItems")
+if not DroppedFolder then
+    spawn(function()
+        DroppedFolder = Workspace:WaitForChild("DroppedItems", 10)
+        if not DroppedFolder then
+            warn("DroppedItems folder not found. Item ESP disabled until created.")
+        end
+    end)
+end
+
+local ItemESPs = {}
+local BlueColor = Color3.fromRGB(0,150,255)
+local GreenColor = Color3.fromRGB(0,255,0)
+
+local function getItemColor(item)
+    if item and item.Name and item.Name:lower():find("money") then
+        return GreenColor
+    else
+        return BlueColor
+    end
+end
+
+local function createItemESP(item)
+    if not state.ShowDroppedItems then return end
+    if not item then return end
+    if ItemESPs[item] then return end
+
+    local color = getItemColor(item)
+    local highlights = {}
+
+    if item:IsA("BasePart") then
+        local hl = Instance.new("Highlight")
+        hl.Adornee = item
+        hl.FillColor = color
+        hl.OutlineColor = color
+        hl.FillTransparency = 0.7
+        hl.OutlineTransparency = 0
+        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        hl.Parent = item
+        table.insert(highlights, hl)
+    elseif item:IsA("Model") then
+        for _, part in ipairs(item:GetDescendants()) do
+            if part:IsA("BasePart") then
+                local hl = Instance.new("Highlight")
+                hl.Adornee = part
+                hl.FillColor = color
+                hl.OutlineColor = color
+                hl.FillTransparency = 0.7
+                hl.OutlineTransparency = 0
+                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                hl.Parent = part
+                table.insert(highlights, hl)
+            end
+        end
+    end
+
+    -- Billboard name
+local basePart = nil
+    if item:IsA("BasePart") then
+        basePart = item
+    else
+        basePart = item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart")
+    end
+
+    local label = nil
+    if basePart then
+        local bb = Instance.new("BillboardGui")
+        bb.Adornee = basePart
+        bb.Size = UDim2.new(0, 80, 0, 20)
+        bb.AlwaysOnTop = true
+        bb.StudsOffset = Vector3.new(0, (basePart.Size.Y / 2) + 1, 0)
+        bb.Parent = basePart
+
+        label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1,0,1,0)
+        label.BackgroundTransparency = 1
+        label.Text = "["..(item.Name or "Item").."]"
+        label.TextScaled = true
+        label.Font = Enum.Font.GothamBold
+        label.TextColor3 = color
+        label.TextStrokeTransparency = 0.2
+        label.Parent = bb
+    end
+
+    ItemESPs[item] = {highlights = highlights, label = label}
+end
+
+local function removeItemESP(item)
+    if not ItemESPs[item] then return end
+    for _, hl in ipairs(ItemESPs[item].highlights) do
+        if hl and hl.Parent then hl:Destroy() end
+    end
+if ItemESPs[item].label and ItemESPs[item].label.Parent then
+        ItemESPs[item].label.Parent:Destroy()
+    end
+    ItemESPs[item] = nil
+end
+
+local function scanDroppedItemsFolder()
+    if not DroppedFolder then return end
+    for _, item in ipairs(DroppedFolder:GetChildren()) do
+        pcall(function() createItemESP(item) end)
+    end
+end
+
+if DroppedFolder then scanDroppedItemsFolder() end
+if DroppedFolder then
+    DroppedFolder.ChildAdded:Connect(function(item)
+        task.wait(0.1)
+        if state.ShowDroppedItems then pcall(function() createItemESP(item) end) end
+    end)
+    DroppedFolder.ChildRemoved:Connect(function(item)
+        pcall(function() removeItemESP(item) end)
+    end)
+end
+
+-- Dropped Items UI toggle
+ESPTab:Toggle({
+    Title = "Show Dropped Items ESP",
+    Default = true,
+    Callback = function(v)
+        state.ShowDroppedItems = v
+        if not v then
+for item, _ in pairs(ItemESPs) do pcall(function() removeItemESP(item) end) end
+        else
+            scanDroppedItemsFolder()
+        end
+    end
+})
+
+-- ===== Main RenderStepped update (FOV/Tracer/PlayerESP updates) =====
+RunService.RenderStepped:Connect(function()
+    -- update FOV circle
+    if FOVCircle and state.showFov then
+        FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+        FOVCircle.Radius = state.FOVRadius
+        FOVCircle.Visible = true
+    elseif FOVCircle then
+        FOVCircle.Visible = false
+    end
+
+    -- tracer logic
+    local closestTarget = state.SilentAimEnabled and GetClosestTarget() or nil
+    if tracerLine and state.SilentAimEnabled and closestTarget and closestTarget.Character then
+        local humanoid = closestTarget.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid and humanoid.Health > 0 then
+            local myHead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head")
+            local aimPart = GetTargetPart(closestTarget.Character)
+            if myHead and aimPart then
+                local screenStart, onScreenStart = Camera:WorldToViewportPoint(myHead.Position)
+                local screenEnd, onScreenEnd = Camera:WorldToViewportPoint(aimPart.Position)
+              if onScreenStart and onScreenEnd then
+                    tracerLine.From = Vector2.new(screenStart.X, screenStart.Y)
+                    tracerLine.To = Vector2.new(screenEnd.X, screenEnd.Y)
+                    tracerLine.Thickness = 2
+                    tracerLine.Color = Color3.fromRGB(255,0,0)
+                    tracerLine.Visible = true
+                else
+                    tracerLine.Visible = false
+                end
+            else
+                tracerLine.Visible = false
+            end
+        else
+            tracerLine.Visible = false
+        end
+    else
+        if tracerLine then tracerLine.Visible = false end
+    end
+
+    -- update player ESP drawings
+    updatePlayerESPs()
+end)
+
+-- ===== Cleanup on script disable/unload (best-effort) =====
+local function cleanupAll()
+    -- remove player drawings
+    for player, _ in pairs(PlayerESP) do
+        pcall(function() removePlayerDrawing(player) end)
+    end
+    -- remove item esps
+    for item,_ in pairs(ItemESPs) do
+pcall(function() removeItemESP(item) end)
+    end
+    -- remove drawing objects if exist
+    if FOVCircle and FOVCircle.Remove then pcall(function() FOVCircle:Remove() end) end
+    if tracerLine and tracerLine.Remove then pcall(function() tracerLine:Remove() end) end
+end
+
+-- when player leaves or script disabled - try to cleanup
+Players.PlayerRemoving:Connect(function(p) removePlayerDrawing(p) end)
+-- (can't reliably detect script/unload, but cleanupAll available if you call it)
+
+print("Merged script loaded. SilentAim:", state.SilentAimEnabled, "PlayerESP(Name/Box/HP):", state.ShowPlayerName, state.ShowPlayerBox, state.ShowPlayerHealth, "ItemESP:", state.ShowDroppedItems)
+bodyTab:Toggle({
+    Title = "Enable กันตาย ",
+    Default = false,
+    Callback = function(v) state.EnableWallBang = v end
+})
+--=== Anti-Dead System ===--
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local antiDeadEnabled = true   -- เปิดใช้งานทันที
+local isAntiDead = false
+local depth = 3
+local fakeChar
+
+local function getCharData()
+    local char = player.Character or player.CharacterAdded:Wait()
+    local hum = char:WaitForChild("Humanoid")
+    local root = char:WaitForChild("HumanoidRootPart")
+    return char, hum, root
+end
+
+local function forceDownReal(root, hum, char)
+    local targetY = root.Position.Y - depth
+    root.CFrame = CFrame.new(root.Position.X, targetY, root.Position.Z)
+    root.Velocity = Vector3.zero
+    root.AssemblyLinearVelocity = Vector3.zero
+    hum.PlatformStand = true
+    for _, part in pairs(char:GetChildren()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = false
+        end
+    end
+end
+
+local function createFakeCharacter(root)
+    local dummy = Instance.new("Model")
+    dummy.Name = player.Name .. "_Fake"
+
+    local hrp = Instance.new("Part")
+    hrp.Name = "HumanoidRootPart"
+    hrp.Size = Vector3.new(2,2,1)
+    hrp.Anchored = true
+    hrp.CanCollide = true
+    hrp.Position = root.Position
+    hrp.Parent = dummy
+
+    local humanoid = Instance.new("Humanoid")
+    humanoid.Parent = dummy
+
+    dummy.Parent = workspace
+    return dummy
+end
+
+local function startAntiDeadLoop()
+    if isAntiDead then return end
+    isAntiDead = true
+
+    local char, hum, root = getCharData()
+    fakeChar = createFakeCharacter(root)
+    local fakeRoot = fakeChar:FindFirstChild("HumanoidRootPart")
+
+    task.spawn(function()
+        while antiDeadEnabled and hum.Health > 0 and isAntiDead and hum.Health <= 21 do
+            forceDownReal(root, hum, char)
+
+            local power = 3
+            local dx = math.random(-power, power)
+            local dz = math.random(-power, power)
+            local spin = CFrame.Angles(0, math.rad(50), 0)
+            root.CFrame = (root.CFrame * spin) * CFrame.new(dx, 0, dz)
+
+            if fakeRoot then
+                fakeRoot.CFrame = root.CFrame + Vector3.new(0, depth, 0)
+            end
+
+            RunService.Heartbeat:Wait()
+        end
+
+        if fakeChar then
+            fakeChar:Destroy()
+            fakeChar = nil
+        end
+        hum.PlatformStand = false
+        for _, part in pairs(char:GetChildren()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = true
+            end
+        end
+        root.CFrame = root.CFrame + Vector3.new(0, depth + 2, 0)
+        isAntiDead = false
+    end)
+end
+
+local function connectAntiDead(char)
+    local hum = char:WaitForChild("Humanoid")
+    hum.HealthChanged:Connect(function(hp)
+        if antiDeadEnabled then
+            if hp <= 21 and not isAntiDead then
+                startAntiDeadLoop()
+            elseif hp >= 31 and isAntiDead then
+                local char, hum, root = getCharData()
+                if fakeChar then fakeChar:Destroy() end
+                hum.PlatformStand = false
+                for _, part in pairs(char:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = true
+                    end
+                end
+                root.CFrame = root.CFrame + Vector3.new(0, depth + 2, 0)
+                isAntiDead = false
+            end
+        end
+    end)
+end
+
+if player.Character then
+    connectAntiDead(player.Character)
+end
+
+player.CharacterAdded:Connect(connectAntiDead)
+
+print("Anti-Dead Loaded ✔️")
