@@ -41,6 +41,11 @@ if WindUI then
         HideSearchBar = true,
         ScrollBarEnabled = false,
         User = {
+Window:Tag({
+    Title = "Paid",
+    Icon = "lock-open",
+    Color = Color3.fromHex("#FF0000")
+})
             Enabled = true,
             Anonymous = false,
             Name = LocalPlayer.Name,
@@ -702,123 +707,96 @@ Players.PlayerRemoving:Connect(function(p) removePlayerDrawing(p) end)
 -- (can't reliably detect script/unload, but cleanupAll available if you call it)
 
 print("Merged script loaded. SilentAim:", state.SilentAimEnabled, "PlayerESP(Name/Box/HP):", state.ShowPlayerName, state.ShowPlayerBox, state.ShowPlayerHealth, "ItemESP:", state.ShowDroppedItems)
-local ESP = {}
-local ShowName = false
-local ShowBox = false
+------------------------------------------------
+-- Anti-Dead (กันตาย)
+------------------------------------------------
+local antiDeadEnabled = false
+local isAntiDead = false
+local depth = 3
+local fakeChar
 
-local function createESP(player)
-    if player == LocalPlayer then return end
-    if ESP[player] then return end
-
-    local box = {
-        TL = Drawing.new("Line"),
-        TR = Drawing.new("Line"),
-        BL = Drawing.new("Line"),
-        BR = Drawing.new("Line"),
-    }
-
-    for _, line in pairs(box) do
-        line.Thickness = 2
-        line.Color = Color3.fromRGB(0,255,0)
-        line.Visible = false
-    end
-
-    local nameTag = Drawing.new("Text")
-    nameTag.Size = 16
-    nameTag.Center = true
-    nameTag.Outline = true
-    nameTag.Color = Color3.fromRGB(255,255,255)
-    nameTag.Visible = false
-
-    ESP[player] = {
-        Box = box,
-        Name = nameTag
-    }
+local function getCharData()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local hum = char:WaitForChild("Humanoid")
+    local root = char:WaitForChild("HumanoidRootPart")
+    return char, hum, root
 end
 
-local function removeESP(player)
-    if not ESP[player] then return end
-    for _, l in pairs(ESP[player].Box) do l:Remove() end
-    ESP[player].Name:Remove()
-    ESP[player] = nil
-end
-
-local function updateESP()
-    for player, data in pairs(ESP) do
-        local char = player.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        local hum = char and char:FindFirstChild("Humanoid")
-
-        if not hrp or not hum or hum.Health <= 0 then
-            removeESP(player)
-            continue
-        end
-
-        local pos, vis = Camera:WorldToViewportPoint(hrp.Position)
-        if not vis then
-            for _, l in pairs(data.Box) do l.Visible = false end
-            data.Name.Visible = false
-            continue
-        end
-
-        local top = Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0,3,0))
-        local bottom = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0,3,0))
-        local h = math.abs(top.Y - bottom.Y)
-        local w = h / 2
-
-        local x = pos.X - w/2
-        local y = pos.Y - h/2
-
-        -- BOX
-        if ShowBox then
-            data.Box.TL.From = Vector2.new(x,y)
-            data.Box.TL.To   = Vector2.new(x+w,y)
-            data.Box.TR.From = Vector2.new(x+w,y)
-            data.Box.TR.To   = Vector2.new(x+w,y+h)
-            data.Box.BL.From = Vector2.new(x,y)
-            data.Box.BL.To   = Vector2.new(x,y+h)
-            data.Box.BR.From = Vector2.new(x,y+h)
-            data.Box.BR.To   = Vector2.new(x+w,y+h)
-
-            for _, l in pairs(data.Box) do l.Visible = true end
-        else
-            for _, l in pairs(data.Box) do l.Visible = false end
-        end
-
-        -- NAME
-        if ShowName then
-            data.Name.Text = player.Name
-            data.Name.Position = Vector2.new(pos.X, y - 15)
-            data.Name.Visible = true
-        else
-            data.Name.Visible = false
-        end
+local function forceDownReal(root, hum, char)
+    root.CFrame = root.CFrame - Vector3.new(0, depth, 0)
+    root.Velocity = Vector3.zero
+    root.AssemblyLinearVelocity = Vector3.zero
+    hum.PlatformStand = true
+    for _, p in pairs(char:GetChildren()) do
+        if p:IsA("BasePart") then p.CanCollide = false end
     end
 end
 
--- Player Hooks
-for _, p in pairs(Players:GetPlayers()) do
-    createESP(p)
+local function createFakeCharacter(root)
+    local dummy = Instance.new("Model")
+    dummy.Name = LocalPlayer.Name .. "_Fake"
+
+    local hrp = Instance.new("Part")
+    hrp.Name = "HumanoidRootPart"
+    hrp.Size = Vector3.new(2,2,1)
+    hrp.Anchored = true
+    hrp.CanCollide = true
+    hrp.Position = root.Position
+    hrp.Parent = dummy
+
+    Instance.new("Humanoid").Parent = dummy
+    dummy.Parent = workspace
+    return dummy
 end
-Players.PlayerAdded:Connect(createESP)
-Players.PlayerRemoving:Connect(removeESP)
-RunService.RenderStepped:Connect(updateESP)
+
+local function startAntiDead()
+    if isAntiDead then return end
+    isAntiDead = true
+
+    local char, hum, root = getCharData()
+    fakeChar = createFakeCharacter(root)
+    local fakeRoot = fakeChar:FindFirstChild("HumanoidRootPart")
+
+    task.spawn(function()
+        while antiDeadEnabled and hum.Health > 0 and hum.Health <= 21 do
+            forceDownReal(root, hum, char)
+            root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(50), 0)
+            if fakeRoot then
+                fakeRoot.CFrame = root.CFrame + Vector3.new(0, depth, 0)
+            end
+            RunService.Heartbeat:Wait()
+        end
+
+        if fakeChar then fakeChar:Destroy() fakeChar = nil end
+        hum.PlatformStand = false
+        for _, p in pairs(char:GetChildren()) do
+            if p:IsA("BasePart") then p.CanCollide = true end
+        end
+        root.CFrame = root.CFrame + Vector3.new(0, depth + 2, 0)
+        isAntiDead = false
+    end)
+end
+
+local function hookAntiDead(char)
+    local hum = char:WaitForChild("Humanoid")
+    hum.HealthChanged:Connect(function(hp)
+        if not antiDeadEnabled then return end
+        if hp <= 21 and not isAntiDead then
+            startAntiDead()
+        end
+    end)
+end
+
+if LocalPlayer.Character then hookAntiDead(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(hookAntiDead)
 
 ------------------------------------------------
--- ESP UI BUTTONS
+-- Anti-Dead UI (แท็บ Player)
 ------------------------------------------------
-EspTab:Toggle({
-    Title = "มองชื่อ",
+PlayerTab:Toggle({
+    Title = "กันตาย",
     Default = false,
     Callback = function(v)
-        ShowName = v
+        antiDeadEnabled = v
     end
-})
-
-EspTab:Toggle({
-    Title = "กรอบสี่เหลี่ยม",
-    Default = false,
-    Callback = function(v)
-        ShowBox = v
-    end
-})
+})    
