@@ -41,11 +41,6 @@ if WindUI then
         HideSearchBar = true,
         ScrollBarEnabled = false,
         User = {
-Window:Tag({
-    Title = "Paid",
-    Icon = "lock-open",
-    Color = Color3.fromHex("#FF0000")
-})
             Enabled = true,
             Anonymous = false,
             Name = LocalPlayer.Name,
