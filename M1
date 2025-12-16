@@ -847,3 +847,59 @@ PlayerTab:Toggle({
     Default = false,
     Callback = function(v) MagnetEnabled = v end
 })
+------------------------------------------------
+-- HIGH JUMP SYSTEM (STABLE)
+------------------------------------------------
+local defaultJumpPower = 20
+local maxJumpPower = 100
+local highJumpPower = 60
+local highJumpEnabled = false
+
+local function applyJumpPower()
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+
+    hum.UseJumpPower = true
+
+    if highJumpEnabled then
+        hum.JumpPower = math.clamp(highJumpPower, 0, maxJumpPower)
+    else
+        hum.JumpPower = defaultJumpPower
+    end
+end
+
+-- รีเซ็ตตอนเกิดใหม่
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.2)
+    applyJumpPower()
+end)
+
+------------------------------------------------
+-- PLAYER TAB UI
+------------------------------------------------
+PlayerTab:Toggle({
+    Title = "กระโดดสูง",
+    Default = false,
+    Callback = function(state)
+        highJumpEnabled = state
+        applyJumpPower()
+    end
+})
+
+-- ❗ ใช้ Input แทน Slider (ใช้งานได้จริง)
+PlayerTab:Input({
+    Title = "พลังการกระโดด (0 - 100)",
+    Placeholder = "เช่น 60",
+    Default = tostring(highJumpPower),
+    Numeric = true,
+    Callback = function(text)
+        local value = tonumber(text)
+        if value then
+            highJumpPower = math.clamp(value, 0, maxJumpPower)
+            applyJumpPower()
+        end
+    end
+})
