@@ -1152,49 +1152,43 @@ PlayerTab:Toggle({
     end
 })
 ------------------------------------------------
--- ESP : มองของ (Toggle)
+-- ESP TAB : มองของ (เปิด/ปิดจริง)
 ------------------------------------------------
-getgenv().ESP_ENABLED = false
 getgenv().ESP_LOADED = false
+local espHideConn
 
 local function enableESP()
-    if getgenv().ESP_LOADED then
-        getgenv().ESP_ENABLED = true
-        return
+    if not getgenv().ESP_LOADED then
+        getgenv().ESP_LOADED = true
+        loadstring(game:HttpGet(
+            "https://raw.githubusercontent.com/bmko84/WindUI/refs/heads/main/GOD",
+            true
+        ))()
     end
 
-    getgenv().ESP_ENABLED = true
-    getgenv().ESP_LOADED = true
-
-    -- โหลด ESP
-    loadstring(game:HttpGet(
-        "https://raw.githubusercontent.com/bmko84/WindUI/refs/heads/main/GOD",
-        true
-    ))()
+    if espHideConn then
+        espHideConn:Disconnect()
+        espHideConn = nil
+    end
 end
 
 local function disableESP()
-    getgenv().ESP_ENABLED = false
-
-    -- พยายามซ่อน Drawing ESP (กรณีสคริปต์ใช้ Drawing)
-    if Drawing then
-        for _, v in pairs(Drawing:GetObjects()) do
-            pcall(function()
-                v.Visible = false
-            end)
+    espHideConn = RunService.RenderStepped:Connect(function()
+        if Drawing then
+            for _, v in pairs(Drawing:GetObjects()) do
+                pcall(function()
+                    v.Visible = false
+                end)
+            end
         end
-    end
+    end)
 end
 
 EspTab:Toggle({
     Title = "มองของ",
-    Desc = "เปิด/ปิด ESP มองของ",
+    Desc = "ESP มองของ เปิด / ปิด (หายจริง)",
     Default = false,
     Callback = function(state)
-        if state then
-            enableESP()
-        else
-            disableESP()
-        end
+        if state then enableESP() else disableESP() end
     end
 })
