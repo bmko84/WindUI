@@ -960,7 +960,7 @@ end)
 -- PLAYER TAB UI (BURROW ONLY)
 ------------------------------------------------
 PlayerTab:Section({
-    Title = "Underground / มุดดิน"
+    Title = ""
 })
 
 PlayerTab:Toggle({
@@ -1097,12 +1097,104 @@ end
 ------------------------------------------------
 PlayerTab:Toggle({
     Title = "สเตมิน่าไม่จำกัด",
-    Desc = "Stamina ไม่ลด (Sprint ไม่หมด)",
+    Desc = "",
     Default = false,
     Callback = function(state)
         g().Infinitestamina = state
         if state then
             setupSprint()
+        end
+    end
+})
+------------------------------------------------
+-- PLAYER TAB : ซิ่งเร็ว (วาร์ป)
+------------------------------------------------
+local speedConn
+local warpDistance = 0.4
+local warpCooldown = 0.05
+local lastWarp = 0
+
+local function startSpeed()
+    speedConn = RunService.Heartbeat:Connect(function()
+        local char = LocalPlayer.Character
+        if not char then return end
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChild("Humanoid")
+        if not hrp or not hum then return end
+
+        if tick() - lastWarp >= warpCooldown then
+            if hum.MoveDirection.Magnitude > 0 then
+                hrp.CFrame = hrp.CFrame + hrp.CFrame.LookVector * warpDistance
+                lastWarp = tick()
+            end
+        end
+    end)
+end
+
+local function stopSpeed()
+    if speedConn then
+        speedConn:Disconnect()
+        speedConn = nil
+    end
+end
+
+PlayerTab:Toggle({
+    Title = "วิ่งเร็วนิดนึง",
+    Desc = "",
+    Default = false,
+    Callback = function(state)
+        if state then
+            startSpeed()
+        else
+            stopSpeed()
+        end
+    end
+})
+------------------------------------------------
+-- ESP : มองของ (Toggle)
+------------------------------------------------
+getgenv().ESP_ENABLED = false
+getgenv().ESP_LOADED = false
+
+local function enableESP()
+    if getgenv().ESP_LOADED then
+        getgenv().ESP_ENABLED = true
+        return
+    end
+
+    getgenv().ESP_ENABLED = true
+    getgenv().ESP_LOADED = true
+
+    -- โหลด ESP
+    loadstring(game:HttpGet(
+        "https://raw.githubusercontent.com/bmko84/WindUI/refs/heads/main/GOD",
+        true
+    ))()
+end
+
+local function disableESP()
+    getgenv().ESP_ENABLED = false
+
+    -- พยายามซ่อน Drawing ESP (กรณีสคริปต์ใช้ Drawing)
+    if Drawing then
+        for _, v in pairs(Drawing:GetObjects()) do
+            pcall(function()
+                v.Visible = false
+            end)
+        end
+    end
+end
+
+EspTab:Toggle({
+    Title = "มองของ",
+    Desc = "เปิด/ปิด ESP มองของ",
+    Default = false,
+    Callback = function(state)
+        if state then
+            enableESP()
+        else
+            disableESP()
         end
     end
 })
