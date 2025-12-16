@@ -903,3 +903,206 @@ PlayerTab:Input({
         end
     end
 })
+------------------------------------------------
+-- UNDERGROUND / BURROW SYSTEM (ONLY)
+------------------------------------------------
+local burrowEnabled = false
+local burrowDepth = 9
+local burrowConnection
+local lockedY
+
+local function getChar()
+    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+end
+
+local function getRoot()
+    return getChar():WaitForChild("HumanoidRootPart")
+end
+
+local function applyBurrow()
+    if not burrowEnabled then return end
+
+    local root = getRoot()
+    lockedY = root.Position.Y - burrowDepth
+
+    if burrowConnection then
+        burrowConnection:Disconnect()
+    end
+
+    burrowConnection = RunService.Heartbeat:Connect(function()
+        if not burrowEnabled or not root.Parent then return end
+
+        root.Velocity = Vector3.zero
+        root.CFrame = CFrame.new(
+            root.Position.X,
+            lockedY,
+            root.Position.Z
+        )
+    end)
+end
+
+local function stopBurrow()
+    if burrowConnection then
+        burrowConnection:Disconnect()
+        burrowConnection = nil
+    end
+end
+
+-- รีเซ็ตตอนเกิดใหม่
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.2)
+    if burrowEnabled then
+        applyBurrow()
+    end
+end)
+
+------------------------------------------------
+-- PLAYER TAB UI (BURROW ONLY)
+------------------------------------------------
+PlayerTab:Section({
+    Title = "Underground / มุดดิน"
+})
+
+PlayerTab:Toggle({
+    Title = "เปิดมุดดิน",
+    Default = false,
+    Callback = function(state)
+        burrowEnabled = state
+        if state then
+            applyBurrow()
+        else
+            stopBurrow()
+        end
+    end
+})
+
+PlayerTab:Input({
+    Title = "ความลึกมุดดิน (1 - 50)",
+    Placeholder = "เช่น 9",
+    Default = tostring(burrowDepth),
+    Numeric = true,
+    Callback = function(text)
+        local value = tonumber(text)
+        if value then
+            burrowDepth = math.clamp(value, 1, 50)
+            if burrowEnabled then
+                applyBurrow()
+            end
+        end
+    end
+})
+------------------------------------------------
+-- VAR (MODE)
+------------------------------------------------
+local enabled = false
+local conn
+local t = 0
+local spin = 0
+local sinkTimer = 0
+local sinking = false
+
+------------------------------------------------
+-- FUNCTIONS
+------------------------------------------------
+local function startMode()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local hrp = char:WaitForChild("HumanoidRootPart")
+
+    conn = RunService.RenderStepped:Connect(function(dt)
+        t += dt * 35
+        spin += dt * math.rad(900) -- หมุนทั้งตัวแรง
+        sinkTimer += dt
+
+        -- 🍑 ตูดสั่นแรง
+        local shake = math.sin(t) * math.rad(16)
+
+        -- 🚶 เดินเหวี่ยง
+        local sway = math.sin(t * 0.8) * math.rad(7)
+
+        -- 🕳️ จมทุก 0.5 วิ
+        if sinkTimer >= 0.5 then
+            sinking = not sinking
+            sinkTimer = 0
+        end
+
+        local yOffset = sinking and -0.9 or 0
+
+        hrp.CFrame =
+            hrp.CFrame *
+            CFrame.new(0, yOffset * dt * 10, 0) *
+            CFrame.Angles(sway, spin + shake, 0)
+    end)
+end
+
+local function stopMode()
+    if conn then
+        conn:Disconnect()
+        conn = nil
+    end
+end
+
+------------------------------------------------
+-- TOGGLE (อยู่ในแท็บ Player)
+------------------------------------------------
+PlayerTab:Toggle({
+    Title = "โหมดกันล็อก",
+    Desc = "กันล็อกกากๆเอาไรเยอะ",
+    Default = false,
+    Callback = function(state)
+        enabled = state
+        if state then
+            startMode()
+        else
+            stopMode()
+        end
+    end
+})
+------------------------------------------------
+-- วิ่งเร็ว (Infinite Stamina)
+------------------------------------------------
+local function g()
+    return getgenv()
+end
+g().Infinitestamina = false
+
+local SprintModule
+local SprintBar
+local hooked = false
+
+local function setupSprint()
+    if hooked then return end
+    local ok, mod = pcall(function()
+        return require(ReplicatedStorage.Modules.Game.Sprint)
+    end)
+    if not ok then return end
+
+    SprintModule = mod
+    local consume_stamina = SprintModule.consume_stamina
+    SprintBar = debug.getupvalue(consume_stamina, 2).sprint_bar
+
+    local Old
+    Old = hookfunction(SprintBar.update, function(...)
+        if g().Infinitestamina then
+            return Old(function() return 1 end)
+        else
+            return Old(...)
+        end
+    end)
+
+    hooked = true
+end
+
+------------------------------------------------
+-- TOGGLE : วิ่งเร็ว
+------------------------------------------------
+PlayerTab:Toggle({
+    Title = "สเตมิน่าไม่จำกัด",
+    Desc = "Stamina ไม่ลด (Sprint ไม่หมด)",
+    Default = false,
+    Callback = function(state)
+        g().Infinitestamina = state
+        if state then
+            setupSprint()
+        end
+    end
+})
