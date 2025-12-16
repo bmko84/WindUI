@@ -904,94 +904,6 @@ PlayerTab:Input({
     end
 })
 ------------------------------------------------
--- UNDERGROUND / BURROW SYSTEM (ONLY)
-------------------------------------------------
-local burrowEnabled = false
-local burrowDepth = 9
-local burrowConnection
-local lockedY
-
-local function getChar()
-    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-end
-
-local function getRoot()
-    return getChar():WaitForChild("HumanoidRootPart")
-end
-
-local function applyBurrow()
-    if not burrowEnabled then return end
-
-    local root = getRoot()
-    lockedY = root.Position.Y - burrowDepth
-
-    if burrowConnection then
-        burrowConnection:Disconnect()
-    end
-
-    burrowConnection = RunService.Heartbeat:Connect(function()
-        if not burrowEnabled or not root.Parent then return end
-
-        root.Velocity = Vector3.zero
-        root.CFrame = CFrame.new(
-            root.Position.X,
-            lockedY,
-            root.Position.Z
-        )
-    end)
-end
-
-local function stopBurrow()
-    if burrowConnection then
-        burrowConnection:Disconnect()
-        burrowConnection = nil
-    end
-end
-
--- รีเซ็ตตอนเกิดใหม่
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.2)
-    if burrowEnabled then
-        applyBurrow()
-    end
-end)
-
-------------------------------------------------
--- PLAYER TAB UI (BURROW ONLY)
-------------------------------------------------
-PlayerTab:Section({
-    Title = ""
-})
-
-PlayerTab:Toggle({
-    Title = "เปิดมุดดิน",
-    Default = false,
-    Callback = function(state)
-        burrowEnabled = state
-        if state then
-            applyBurrow()
-        else
-            stopBurrow()
-        end
-    end
-})
-
-PlayerTab:Input({
-    Title = "ความลึกมุดดิน (1 - 50)",
-    Placeholder = "เช่น 9",
-    Default = tostring(burrowDepth),
-    Numeric = true,
-    Callback = function(text)
-        local value = tonumber(text)
-        if value then
-            burrowDepth = math.clamp(value, 1, 50)
-            if burrowEnabled then
-                applyBurrow()
-            end
-        end
-    end
-})
-------------------------------------------------
 -- VAR (MODE)
 ------------------------------------------------
 local enabled = false
@@ -1190,5 +1102,107 @@ EspTab:Toggle({
     Default = false,
     Callback = function(state)
         if state then enableESP() else disableESP() end
+    end
+})
+------------------------------------------------
+-- BURROW SYSTEM (FAST MOVE)
+------------------------------------------------
+local burrowEnabled = false
+local burrowDepth = 9
+local burrowConnection
+local lockedY
+local defaultWalkSpeed = 16 -- ค่าเดินปกติ
+
+local function getChar()
+    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+end
+
+local function getHumanoid()
+    return getChar():WaitForChild("Humanoid")
+end
+
+local function getRoot()
+    return getChar():WaitForChild("HumanoidRootPart")
+end
+
+local function applyBurrow()
+    if not burrowEnabled then return end
+
+    local hum = getHumanoid()
+    local root = getRoot()
+
+    defaultWalkSpeed = hum.WalkSpeed
+    hum.WalkSpeed = defaultWalkSpeed -- คงความเร็วปกติ
+
+    lockedY = root.Position.Y - burrowDepth
+
+    if burrowConnection then
+        burrowConnection:Disconnect()
+    end
+
+    burrowConnection = RunService.Heartbeat:Connect(function()
+        if not burrowEnabled or not root.Parent then return end
+
+        -- ล็อกเฉพาะแกน Y ปล่อย X Z ให้เดินเอง
+        root.AssemblyLinearVelocity = Vector3.new(
+            root.AssemblyLinearVelocity.X,
+            0,
+            root.AssemblyLinearVelocity.Z
+        )
+
+        root.CFrame = CFrame.new(
+            root.Position.X,
+            lockedY,
+            root.Position.Z
+        )
+    end)
+end
+
+local function stopBurrow()
+    local hum = getHumanoid()
+    hum.WalkSpeed = defaultWalkSpeed
+
+    if burrowConnection then
+        burrowConnection:Disconnect()
+        burrowConnection = nil
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.2)
+    if burrowEnabled then
+        applyBurrow()
+    end
+end)
+
+------------------------------------------------
+-- PLAYER TAB UI
+------------------------------------------------
+PlayerTab:Toggle({
+    Title = "มุดดิน",
+    Default = false,
+    Callback = function(state)
+        burrowEnabled = state
+        if state then
+            applyBurrow()
+        else
+            stopBurrow()
+        end
+    end
+})
+
+PlayerTab:Input({
+    Title = "ความลึก (1 - 50)",
+    Placeholder = "เช่น 9",
+    Default = tostring(burrowDepth),
+    Numeric = true,
+    Callback = function(text)
+        local value = tonumber(text)
+        if value then
+            burrowDepth = math.clamp(value, 1, 50)
+            if burrowEnabled then
+                applyBurrow()
+            end
+        end
     end
 })
