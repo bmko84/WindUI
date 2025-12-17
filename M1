@@ -1105,13 +1105,13 @@ EspTab:Toggle({
     end
 })
 ------------------------------------------------
--- BURROW SYSTEM (FAST MOVE)
+-- BURROW SYSTEM (LOCK Y + REALTIME SLIDER)
 ------------------------------------------------
 local burrowEnabled = false
-local burrowDepth = 9
+local burrowDepth = 5
 local burrowConnection
-local lockedY
-local defaultWalkSpeed = 16 -- ค่าเดินปกติ
+local baseY
+local defaultWalkSpeed = 16
 
 local function getChar()
     return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -1125,16 +1125,14 @@ local function getRoot()
     return getChar():WaitForChild("HumanoidRootPart")
 end
 
-local function applyBurrow()
-    if not burrowEnabled then return end
-
+local function startBurrow()
     local hum = getHumanoid()
     local root = getRoot()
 
     defaultWalkSpeed = hum.WalkSpeed
-    hum.WalkSpeed = defaultWalkSpeed -- คงความเร็วปกติ
 
-    lockedY = root.Position.Y - burrowDepth
+    -- 🔒 ล็อกจุดอ้างอิงครั้งเดียว
+    baseY = root.Position.Y
 
     if burrowConnection then
         burrowConnection:Disconnect()
@@ -1143,7 +1141,9 @@ local function applyBurrow()
     burrowConnection = RunService.Heartbeat:Connect(function()
         if not burrowEnabled or not root.Parent then return end
 
-        -- ล็อกเฉพาะแกน Y ปล่อย X Z ให้เดินเอง
+        local targetY = baseY - burrowDepth
+
+        -- ล็อกแกน Y เท่านั้น
         root.AssemblyLinearVelocity = Vector3.new(
             root.AssemblyLinearVelocity.X,
             0,
@@ -1152,26 +1152,26 @@ local function applyBurrow()
 
         root.CFrame = CFrame.new(
             root.Position.X,
-            lockedY,
+            targetY,
             root.Position.Z
         )
     end)
 end
 
 local function stopBurrow()
-    local hum = getHumanoid()
-    hum.WalkSpeed = defaultWalkSpeed
-
     if burrowConnection then
         burrowConnection:Disconnect()
         burrowConnection = nil
     end
+
+    local hum = getHumanoid()
+    hum.WalkSpeed = defaultWalkSpeed
 end
 
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(0.2)
     if burrowEnabled then
-        applyBurrow()
+        startBurrow()
     end
 end)
 
@@ -1184,25 +1184,24 @@ PlayerTab:Toggle({
     Callback = function(state)
         burrowEnabled = state
         if state then
-            applyBurrow()
+            startBurrow()
         else
             stopBurrow()
         end
     end
 })
 
-PlayerTab:Input({
-    Title = "ความลึก (1 - 50)",
-    Placeholder = "เช่น 9",
-    Default = tostring(burrowDepth),
-    Numeric = true,
-    Callback = function(text)
-        local value = tonumber(text)
-        if value then
-            burrowDepth = math.clamp(value, 1, 50)
-            if burrowEnabled then
-                applyBurrow()
-            end
-        end
+PlayerTab:Slider({
+    Title = "ความลึกมุดดิน",
+    Value = {
+        Min = 1,
+        Max = 50,
+        Default = burrowDepth
+    },
+    Step = 1,
+    Callback = function(value)
+        burrowDepth = tonumber(value)
+        -- 🔥 เลื่อนแล้วเปลี่ยนทันที (ไม่หล่น)
     end
 })
+
