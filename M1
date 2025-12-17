@@ -1105,112 +1105,9 @@ EspTab:Toggle({
     end
 })
 ------------------------------------------------
--- BURROW SYSTEM (LOCK Y + REALTIME SLIDER)
+-- HUD (FPS / PING / PLAYERS)
 ------------------------------------------------
-local burrowEnabled = false
-local burrowDepth = 5
-local burrowConnection
-local baseY
-local defaultWalkSpeed = 16
-
-local function getChar()
-    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-end
-
-local function getHumanoid()
-    return getChar():WaitForChild("Humanoid")
-end
-
-local function getRoot()
-    return getChar():WaitForChild("HumanoidRootPart")
-end
-
-local function startBurrow()
-    local hum = getHumanoid()
-    local root = getRoot()
-
-    defaultWalkSpeed = hum.WalkSpeed
-
-    -- 🔒 ล็อกจุดอ้างอิงครั้งเดียว
-    baseY = root.Position.Y
-
-    if burrowConnection then
-        burrowConnection:Disconnect()
-    end
-
-    burrowConnection = RunService.Heartbeat:Connect(function()
-        if not burrowEnabled or not root.Parent then return end
-
-        local targetY = baseY - burrowDepth
-
-        -- ล็อกแกน Y เท่านั้น
-        root.AssemblyLinearVelocity = Vector3.new(
-            root.AssemblyLinearVelocity.X,
-            0,
-            root.AssemblyLinearVelocity.Z
-        )
-
-        root.CFrame = CFrame.new(
-            root.Position.X,
-            targetY,
-            root.Position.Z
-        )
-    end)
-end
-
-local function stopBurrow()
-    if burrowConnection then
-        burrowConnection:Disconnect()
-        burrowConnection = nil
-    end
-
-    local hum = getHumanoid()
-    hum.WalkSpeed = defaultWalkSpeed
-end
-
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.2)
-    if burrowEnabled then
-        startBurrow()
-    end
-end)
-
-------------------------------------------------
--- PLAYER TAB UI
-------------------------------------------------
-PlayerTab:Toggle({
-    Title = "มุดดิน",
-    Default = false,
-    Callback = function(state)
-        burrowEnabled = state
-        if state then
-            startBurrow()
-        else
-            stopBurrow()
-        end
-    end
-})
-
-PlayerTab:Slider({
-    Title = "ความลึกมุดดิน",
-    Value = {
-        Min = 1,
-        Max = 50,
-        Default = burrowDepth
-    },
-    Step = 1,
-    Callback = function(value)
-        burrowDepth = tonumber(value)
-        -- 🔥 เลื่อนแล้วเปลี่ยนทันที (ไม่หล่น)
-    end
-})
-----------------------------------------------------------------
--- HUD FPS / Ping / Players
-----------------------------------------------------------------
-local hudText = MiscTab:Paragraph({
-    Title = "",
-    Desc = "",
-})
+local hudText = MiscTab:Paragraph({Title = "", Desc = ""})
 
 local lastUpdate = tick()
 local frameCount = 0
@@ -1246,27 +1143,19 @@ RunService.RenderStepped:Connect(function()
     hudText:SetTitle(text)
 end)
 
-----------------------------------------------------------------
--- Teleport to JobId
-----------------------------------------------------------------
+------------------------------------------------
+-- TELEPORT / SERVER
+------------------------------------------------
 MiscTab:Input({
     Title = "Teleport to JobId",
     Placeholder = "Enter JobId...",
     Callback = function(jobid)
         if jobid and jobid ~= "" then
             TeleportService:TeleportToPlaceInstance(placeId, jobid, player)
-            WindUI:Notify({
-                Title = "Teleport",
-                Content = "Teleporting to JobId...",
-                Color = Color3.fromRGB(0, 162, 255)
-            })
         end
     end
 })
 
-----------------------------------------------------------------
--- Copy JobId
-----------------------------------------------------------------
 MiscTab:Button({
     Title = "Copy Current JobId",
     Callback = function()
@@ -1274,18 +1163,10 @@ MiscTab:Button({
             pcall(function()
                 setclipboard(game.JobId)
             end)
-            WindUI:Notify({
-                Title = "Copied",
-                Content = "JobId copied to clipboard",
-                Color = Color3.fromRGB(0, 255, 0)
-            })
         end
     end
 })
 
-----------------------------------------------------------------
--- Server Hop
-----------------------------------------------------------------
 local function GetServers()
     local servers = {}
     local cursor = nil
@@ -1299,7 +1180,6 @@ local function GetServers()
         local success, res = pcall(function()
             return game:HttpGet(url)
         end)
-
         if not success then break end
 
         local data = HttpService:JSONDecode(res)
@@ -1308,51 +1188,115 @@ local function GetServers()
                 table.insert(servers, s)
             end
         end
-
         cursor = data.nextPageCursor
     until not cursor
 
     return servers
 end
 
-local function HopServer()
-    local servers = GetServers()
-    for _, s in ipairs(servers) do
-        if not visitedServers[s.id] then
-            visitedServers[s.id] = true
-            TeleportService:TeleportToPlaceInstance(placeId, s.id, player)
-            WindUI:Notify({
-                Title = "Hop Server",
-                Content = "Hopping server...",
-                Color = Color3.fromRGB(255, 162, 0)
-            })
-            return
-        end
-    end
-
-    WindUI:Notify({
-        Title = "Hop Server",
-        Content = "No available server",
-        Color = Color3.fromRGB(255, 0, 0)
-    })
-end
-
 MiscTab:Button({
     Title = "Hop Server",
-    Callback = HopServer
+    Callback = function()
+        for _, s in ipairs(GetServers()) do
+            if not visitedServers[s.id] then
+                visitedServers[s.id] = true
+                TeleportService:TeleportToPlaceInstance(placeId, s.id, player)
+                return
+            end
+        end
+    end
 })
 
-----------------------------------------------------------------
--- Rejoin Server
-----------------------------------------------------------------
 MiscTab:Button({
     Title = "Rejoin Server",
     Callback = function()
         TeleportService:Teleport(placeId, player)
-        WindUI:Notify({
-            Title = "Rejoin",
-            Content = "Rejoining server...",
-            Color = Color3.fromRGB(0, 162, 255)
-        })
+    end
+})
+
+------------------------------------------------
+-- BURROW SYSTEM (REALTIME SLIDER)
+------------------------------------------------
+local burrowEnabled = false
+local burrowDepth = 5
+local burrowConnection
+local baseY
+local defaultWalkSpeed = 16
+
+local function getChar()
+    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+end
+
+local function getHumanoid()
+    return getChar():WaitForChild("Humanoid")
+end
+
+local function getRoot()
+    return getChar():WaitForChild("HumanoidRootPart")
+end
+
+local function startBurrow()
+    local hum = getHumanoid()
+    local root = getRoot()
+
+    defaultWalkSpeed = hum.WalkSpeed
+    baseY = root.Position.Y
+
+    if burrowConnection then burrowConnection:Disconnect() end
+
+    burrowConnection = RunService.Heartbeat:Connect(function()
+        if not burrowEnabled or not root.Parent then return end
+
+        local targetY = baseY - burrowDepth
+
+        root.AssemblyLinearVelocity = Vector3.new(
+            root.AssemblyLinearVelocity.X,
+            0,
+            root.AssemblyLinearVelocity.Z
+        )
+
+        root.CFrame = CFrame.new(
+            root.Position.X,
+            targetY,
+            root.Position.Z
+        )
+    end)
+end
+
+local function stopBurrow()
+    if burrowConnection then
+        burrowConnection:Disconnect()
+        burrowConnection = nil
+    end
+    getHumanoid().WalkSpeed = defaultWalkSpeed
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.2)
+    if burrowEnabled then startBurrow() end
+end)
+
+------------------------------------------------
+-- PLAYER TAB UI
+------------------------------------------------
+PlayerTab:Toggle({
+    Title = "มุดดิน",
+    Default = false,
+    Callback = function(state)
+        burrowEnabled = state
+        if state then
+            startBurrow()
+        else
+            stopBurrow()
+        end
+    end
+})
+
+PlayerTab:Slider({
+    Title = "ความลึกมุดดิน",
+    Value = {Min = 1, Max = 50, Default = burrowDepth},
+    Step = 1,
+    Callback = function(value)
+        burrowDepth = tonumber(value)
     end
 })
