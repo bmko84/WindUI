@@ -1,0 +1,203 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+
+local Net = require(game.ReplicatedStorage.Modules.Core.Net)
+local CharModule = require(game.ReplicatedStorage.Modules.Core.Char)
+
+------------------------------------------------
+-- LOAD WINDUI
+------------------------------------------------
+local WindUI = loadstring(game:HttpGet(
+    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
+))()
+
+local Window = WindUI:CreateWindow({
+    Title = "bmegono1",
+    Icon = "zap",
+    Author = "bmegono1",
+    Folder = "MySuperHub",
+    Size = UDim2.fromOffset(580, 460),
+    Transparent = true,
+    Theme = "Dark",
+    Resizable = true,
+    SideBarWidth = 200,
+    HideSearchBar = true,
+    ScrollBarEnabled = false,
+})
+
+------------------------------------------------
+-- TABS
+------------------------------------------------
+local CombatTab = Window:Tab({ Title = "Combat", Icon = "sword" })
+local EspTab    = Window:Tab({ Title = "ESP",    Icon = "eye" })
+local PlayerTab = Window:Tab({ Title = "Player", Icon = "user" })
+local MiscTab   = Window:Tab({ Title = "Misc",   Icon = "cog" })
+
+Window:EditOpenButton({ Enabled = false })
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = CoreGui
+
+local ToggleBtn = Instance.new("ImageButton")
+ToggleBtn.Parent = ScreenGui
+ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
+ToggleBtn.Position = UDim2.new(0.5, -25, 0, 20)
+ToggleBtn.BackgroundTransparency = 1
+ToggleBtn.Image = "rbxassetid://90483188941856"
+ToggleBtn.Draggable = true
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    TweenService:Create(
+        ToggleBtn,
+        TweenInfo.new(0.12),
+        { Size = UDim2.new(0, 56, 0, 56) }
+    ):Play()
+    task.wait(0.12)
+    TweenService:Create(
+        ToggleBtn,
+        TweenInfo.new(0.12),
+        { Size = UDim2.new(0, 50, 0, 50) }
+    ):Play()
+    Window:Toggle()
+end)
+
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.T then
+        Window:Toggle()
+    end
+end)
+
+_G.BASE_RADIUS = 20
+_G.MAX_RADIUS = 90
+_G.CACHE_RESET = 0.2
+_G.FORCE_MULTIPLIER = 7
+_G.MIN_FORCE = 150
+_G.MAX_EXTRA_DAMAGE = 150
+_G.MIN_INTERVAL = 0.03
+_G.MAX_INTERVAL = 0.2
+_G.accumulatedTime = 0
+_G.runoverCacheAll = {}
+_G.lastResetTime = 0
+_G.BumpAuraEnabled = false
+
+local function getBoundingBoxPoints(model)
+    local cframe, size = model:GetBoundingBox()
+    local half = size / 2
+    local points = {}
+    for _, x in ipairs({-1,0,1}) do
+        for _, y in ipairs({-1,0,1}) do
+            for _, z in ipairs({-1,0,1}) do
+                points[#points+1] =
+                    cframe.Position + Vector3.new(
+                        x*half.X, y*half.Y, z*half.Z
+                    )
+            end
+        end
+    end
+    return points
+end
+
+RunService.Heartbeat:Connect(function(dt)
+    if not _G.BumpAuraEnabled then return end
+
+    local accumulatedTime = _G.accumulatedTime + dt
+    local vehiclesFolder = workspace:FindFirstChild("Vehicles")
+    if not vehiclesFolder then return end
+
+    for _, vehicle in pairs(vehiclesFolder:GetChildren()) do
+        local basePart =
+            vehicle.PrimaryPart
+            or (vehicle:FindFirstChild("Body") and vehicle.Body:FindFirstChild("Base"))
+
+        if basePart then
+            local driverSeat = vehicle:FindFirstChild("DriverSeat")
+            if driverSeat and driverSeat.Occupant then
+                if driverSeat.Occupant == CharModule.current_hum.get() then
+                    local vel = basePart.AssemblyLinearVelocity
+                    local velMag = vel.Magnitude
+
+                    local interval = math.clamp(
+                        _G.MAX_INTERVAL - (velMag / 100) * (_G.MAX_INTERVAL - _G.MIN_INTERVAL),
+                        _G.MIN_INTERVAL,
+                        _G.MAX_INTERVAL
+                    )
+
+                    if accumulatedTime >= interval then
+                        accumulatedTime = 0
+
+                        local effectiveRadius = math.clamp(
+                            _G.BASE_RADIUS + velMag,
+                            _G.BASE_RADIUS,
+                            _G.MAX_RADIUS
+                        )
+
+                        _G.runoverCacheAll[vehicle] =
+                            _G.runoverCacheAll[vehicle] or {}
+
+                        local points = getBoundingBoxPoints(vehicle)
+
+                        for _, player in pairs(CharModule.get_all()) do
+                            if player ~= LocalPlayer.Character
+                            and not _G.runoverCacheAll[vehicle][player] then
+                                local hrp = player:FindFirstChild("HumanoidRootPart")
+                                if hrp then
+                                    if (hrp.Position - basePart.Position).Magnitude <= _G.MAX_RADIUS then
+                                        local predictedPos =
+                                            hrp.Position - vel.Unit * velMag * 0.05
+
+                                        for _, point in ipairs(points) do
+                                            if (predictedPos - point).Magnitude <= effectiveRadius then
+                                                _G.runoverCacheAll[vehicle][player] = true
+                                                local force =
+                                                    vel.Unit * math.max(
+                                                        velMag * _G.FORCE_MULTIPLIER,
+                                                        _G.MIN_FORCE
+                                                    )
+                                                Net.send(
+                                                    "run_over",
+                                                    vehicle,
+                                                    player,
+                                                    force,
+                                                    _G.MAX_EXTRA_DAMAGE
+                                                )
+                                                break
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if tick() - _G.lastResetTime > _G.CACHE_RESET then
+        for _, cache in pairs(_G.runoverCacheAll) do
+            table.clear(cache)
+        end
+        _G.lastResetTime = tick()
+    end
+
+    _G.accumulatedTime = accumulatedTime
+end)
+
+MiscTab:Toggle({
+    Title = "Bump Aura",
+    Default = false,
+    Callback = function(v)
+        _G.BumpAuraEnabled = v
+        if not v then
+            _G.runoverCacheAll = {}
+            _G.accumulatedTime = 0
+        end
+    end
+})
