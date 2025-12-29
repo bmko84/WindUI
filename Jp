@@ -1,0 +1,114 @@
+------------------------------------------------
+-- Services & Player 
+------------------------------------------------
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local player = LocalPlayer
+local placeId = game.PlaceId
+local visitedServers = {}
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+------------------------------------------------
+-- Load WindUI
+------------------------------------------------
+local WindUI = loadstring(game:HttpGet(
+    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
+))()
+
+------------------------------------------------
+-- Create Window
+------------------------------------------------
+local Window = WindUI:CreateWindow({
+    Title = "bmegono1",
+    Icon = "zap",
+    Author = "bmegono1",
+    Folder = "MySuperHub",
+
+    Size = UDim2.fromOffset(580, 460),
+    MinSize = Vector2.new(560, 350),
+    MaxSize = Vector2.new(850, 560),
+    Transparent = true,
+    Theme = "Dark",
+    Resizable = true,
+    SideBarWidth = 200,
+    BackgroundImageTransparency = 0.42,
+    HideSearchBar = true,
+    ScrollBarEnabled = false,
+
+    User = {
+        Enabled = true,
+        Anonymous = false,
+        Name = LocalPlayer.Name,
+        Image = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId,
+        Callback = function() end,
+    },
+})
+
+Window:Tag({
+    Title = "Paid",
+    Icon = "lock-open",
+    Color = Color3.fromHex("#FF0000")
+})
+
+------------------------------------------------
+-- Tabs
+------------------------------------------------
+local CombatTab = Window:Tab({ Title = "Combat", Icon = "sword" })
+local EspTab    = Window:Tab({ Title = "ESP",    Icon = "eye" })
+local PlayerTab = Window:Tab({ Title = "Player", Icon = "user" })
+local MiscTab   = Window:Tab({ Title = "Misc",   Icon = "cog" })
+
+------------------------------------------------
+-- Disable default Open Button
+------------------------------------------------
+Window:EditOpenButton({ Enabled = false })
+
+------------------------------------------------
+-- Image Toggle Button (บน-กลาง)
+------------------------------------------------
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "WindUI_ImageToggle"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = CoreGui
+
+local ToggleBtn = Instance.new("ImageButton")
+ToggleBtn.Parent = ScreenGui
+ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
+ToggleBtn.Position = UDim2.new(0.5, -25, 0, 20)
+ToggleBtn.BackgroundTransparency = 1
+ToggleBtn.Image = "rbxassetid://90483188941856"
+ToggleBtn.Active = true
+ToggleBtn.Draggable = true
+
+local function toggleUI()
+    Window:Toggle()
+end
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    TweenService:Create(
+        ToggleBtn,
+        TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { Size = UDim2.new(0, 56, 0, 56) }
+    ):Play()
+    task.wait(0.12)
+    TweenService:Create(
+        ToggleBtn,
+        TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { Size = UDim2.new(0, 50, 0, 50) }
+    ):Play()
+    toggleUI()
+end)
+
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.T then
+        toggleUI()
+    end
+end)
