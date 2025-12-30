@@ -39,10 +39,10 @@ local WindUI = loadstring(game:HttpGet(
 -- Create Window
 ------------------------------------------------
 local Window = WindUI:CreateWindow({
-    Title = "bmegono1",
+    Title = "JAK MAN HUB",
     Icon = "zap",
     Author = "bmegono1",
-    Folder = "MySuperHub",
+    Folder = "EPS.67ตัวซีเคร็ต",
 
     Size = UDim2.fromOffset(580, 460),
     MinSize = Vector2.new(560, 350),
